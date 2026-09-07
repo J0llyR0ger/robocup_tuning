@@ -7,6 +7,7 @@
 #include "tasks/position_tracking.hpp"
 #include "tasks/telemetry.hpp"
 #include "tasks/user_command.hpp"
+#include "tasks/weight_detection.hpp"
 #include <Arduino.h>
 #include <memory>
 
@@ -26,13 +27,22 @@ static LidarProcessingTask lidar_processing_task =
 static IntakeTask intake_task = IntakeTask();
 static TelemetryTask telemetry_task = TelemetryTask();
 static UserCommandTask user_command_task = UserCommandTask(&drive_train_task);
+static WeightDetectionTask weight_detection_task = WeightDetectionTask();
 
-const size_t NUM_TASKS = 10;
+const size_t NUM_TASKS = 11;
 
 std::array<SchedulerTask *, NUM_TASKS> tasks = {
-    &lidar_task,        &drive_train_task,      &imu_task,    &position_tracking_task,
-    &mapping_task,      &motion_control_task,   &intake_task, &telemetry_task,
-    &user_command_task, &lidar_processing_task,
+    &lidar_task,
+    &drive_train_task,
+    &imu_task,
+    &position_tracking_task,
+    &mapping_task,
+    &motion_control_task,
+    &intake_task,
+    &telemetry_task,
+    &user_command_task,
+    &lidar_processing_task,
+    &weight_detection_task,
 };
 std::array<uint32_t, NUM_TASKS> next_runs = {0};
 
@@ -54,6 +64,8 @@ void setup() {
     for (size_t i = 0; i < NUM_TASKS; i++) {
         tasks[i]->setup();
     }
+
+    Wire.setClock(400e3);
 }
 
 static uint32_t next_log_timings = 0;
