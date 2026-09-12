@@ -24,13 +24,20 @@ struct CircleFit {
     float radius_deviation;
 };
 
-struct PointSpan {
-    size_t start;
-    size_t count;
+struct Cluster {
+    size_t start = 0;
+    size_t count = 0;
+
+    Eigen::Vector2f centroid = Eigen::Vector2f::Zero();
+    float range = 0.0f;
+    float spread = 0.0f;
+    float max_extent = 0.0f;
+    float diameter_mm = 0.0f;
+    float aspect_ratio = 1.0f;
 };
 
 // Worst case every point is its own cluster, so cap at MAX_POINTS
-using ClusterList = etl::vector<PointSpan, MAX_LIDAR_POINTS>;
+using ClusterList = etl::vector<Cluster, MAX_LIDAR_POINTS>;
 
 struct LidarProcessingResult {
     etl::vector<LineFit, MAX_LIDAR_POINTS> line_segments;

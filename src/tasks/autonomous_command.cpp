@@ -35,7 +35,7 @@ void AutonomousCommandTask::loop() {
                 continue;
             }
 
-            auto dist = (track.position - robot_position).norm();
+            auto dist = (track.cluster.centroid - robot_position).norm();
 
             if (dist < closest_weight_distance) {
                 closest_weight_distance = dist;
@@ -51,10 +51,10 @@ void AutonomousCommandTask::loop() {
 
         const auto &best_track = targets[best_track_index];
 
-        this->motion_control_task->set_current_path({robot_position, best_track.position});
+        this->motion_control_task->set_current_path({robot_position, best_track.cluster.centroid});
 
         if (closest_weight_distance < 0.5) {
-            this->locked_weight_target = best_track.position;
+            this->locked_weight_target = best_track.cluster.centroid;
             this->intake_task->set_position(false);
         }
     }

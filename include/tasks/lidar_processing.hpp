@@ -14,16 +14,9 @@ struct WeightTarget {
 };
 
 struct WeightTrackedTarget {
-    Eigen::Vector2f position = Eigen::Vector2f::Zero();
+    Cluster cluster{};
     float confidence = 0.0f;
     float last_observation_score = 0.0f;
-
-    float spread = 0.0f;
-    float max_extent = 0.0f;
-    float diameter_mm = 0.0f;
-    float aspect_ratio = 1.0f;
-    float range = 0.0f;
-    int count = 0;
 
     uint16_t missed_updates = 0;
     bool matched_this_update = false;

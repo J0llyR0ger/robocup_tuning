@@ -1,6 +1,8 @@
 #include "lib/lidar_processing.hpp"
 #include "etl/vector.h"
 #include <Eigen/QR>
+#include <algorithm>
+#include <cmath>
 #include <lib/geometry.hpp>
 
 bool coarse_cluster_check(LidarResponsePoint point1, LidarResponsePoint point2) {
@@ -8,6 +10,60 @@ bool coarse_cluster_check(LidarResponsePoint point1, LidarResponsePoint point2) 
                       COARSE_THRESHOLD_OFFSET;
 
     return (point1.position - point2.position).norm() < threshold;
+}
+
+void summarize_cluster(Cluster &cluster, std::span<const LidarResponsePoint> points) {
+    cluster.centroid = Eigen::Vector2f::Zero();
+    cluster.range = 0.0f;
+    cluster.spread = 0.0f;
+    cluster.max_extent = 0.0f;
+    cluster.diameter_mm = 0.0f;
+    cluster.aspect_ratio = 1.0f;
+
+    if (cluster.count == 0 || cluster.start + cluster.count > points.size()) {
+        return;
+    }
+
+    std::span<const LidarResponsePoint> cluster_points(points.data() + cluster.start,
+                                                       cluster.count);
+
+    Eigen::Vector2f centroid = Eigen::Vector2f::Zero();
+    float range = 0.0f;
+
+    for (const auto &point : cluster_points) {
+        centroid += point.position;
+        range += point.range;
+    }
+
+    centroid /= (float)cluster_points.size();
+    range /= (float)cluster_points.size();
+
+    cluster.centroid = centroid;
+    cluster.range = range;
+
+    float min_x = INFINITY;
+    float max_x = -INFINITY;
+    float min_y = INFINITY;
+    float max_y = -INFINITY;
+    float sum_squared_distance = 0.0f;
+
+    for (const auto &point : cluster_points) {
+        const Eigen::Vector2f delta = point.position - centroid;
+
+        sum_squared_distance += delta.squaredNorm();
+
+        min_x = std::min(min_x, point.position.x());
+        max_x = std::max(max_x, point.position.x());
+        min_y = std::min(min_y, point.position.y());
+        max_y = std::max(max_y, point.position.y());
+    }
+
+    cluster.spread = std::sqrt(sum_squared_distance / (float)cluster_points.size());
+    cluster.max_extent = std::max(max_x - min_x, max_y - min_y);
+    cluster.diameter_mm = cluster.max_extent * 1000.0f;
+
+    const float minor_extent = std::min(max_x - min_x, max_y - min_y);
+    cluster.aspect_ratio = minor_extent > 1e-3f ? (cluster.max_extent / minor_extent) : 1.0f;
 }
 
 ClusterList get_coarse_clusters(std::span<LidarResponsePoint> points) {
@@ -54,6 +110,10 @@ ClusterList get_coarse_clusters(std::span<LidarResponsePoint> points) {
     //         clusters = updated;
     //     }
     // }
+
+    for (auto &cluster : clusters) {
+        summarize_cluster(cluster, points);
+    }
 
     return clusters;
 }
@@ -108,7 +168,7 @@ LidarProcessingResult fit_clusters(const ClusterList &coarse_clusters,
             continue;
         }
 
-        PointSpan first, second;
+        Cluster first, second;
 
         if (split == range.count - 1) {
             // Furthest point is the last point in range. subspan(0, split+1) would be
