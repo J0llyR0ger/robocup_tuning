@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 
 struct WeightScoreMetricTuning {
@@ -17,11 +18,8 @@ struct WeightScoreProfileTuning {
 };
 
 struct WeightRangeTuning {
-    float near_range_m = 0.0f;
-    float far_range_m = 1.0f;
-
-    WeightScoreProfileTuning near_profile;
-    WeightScoreProfileTuning far_profile;
+    float range_m = 0.0f;
+    WeightScoreProfileTuning profile;
 };
 
 // Weight Tracking Tuning
@@ -39,33 +37,67 @@ static constexpr uint16_t WEIGHT_TARGET_TRACK_MAX_MISSED_UPDATES = 20;
 // Cluster Identification Tuning
 static constexpr int WEIGHT_TARGET_MIN_CLUSTER_COUNT = 4;
 static constexpr int WEIGHT_TARGET_MAX_CLUSTER_COUNT = 120;
-static constexpr WeightRangeTuning WEIGHT_TARGET_RANGE_TUNING = {
-    .near_range_m = 0.05f,
-    .far_range_m = 0.95f,
-    .near_profile =
-        {
-            .spread = {.desired = 0.0061f, .deviation = 0.0018f, .weight = 0.30f},
-            .extent = {.desired = 0.0168f, .deviation = 0.005f, .weight = 0.20f},
-            .diameter_mm = {.desired = 16.8f, .deviation = 5.12f, .weight = 0.6f},
-            .aspect_ratio = {.desired = 1.5f, .deviation = 0.4f, .weight = 0.15f},
-        },
-    .far_profile =
-        {
-            .spread = {.desired = 0.0131f, .deviation = 0.0035f, .weight = 0.30f},
-            .extent = {.desired = 0.03f, .deviation = 0.01f, .weight = 0.20f},
-            .diameter_mm = {.desired = 26.8f, .deviation = 7.6f, .weight = 0.6f},
-            .aspect_ratio = {.desired = 1.5f, .deviation = 0.5f, .weight = 0.15f},
-        },
+
+static constexpr std::array<WeightRangeTuning, 5> WEIGHT_TARGET_RANGE_TUNING = {
+    WeightRangeTuning{
+        .range_m = 0.05f,
+        .profile =
+            {
+                .spread = {.desired = 0.0034f, .deviation = 0.0015f, .weight = 0.30f},
+                .extent = {.desired = 0.0106f, .deviation = 0.0063f, .weight = 0.20f},
+                .diameter_mm = {.desired = 10.6f, .deviation = 10.0f, .weight = 0.6f},
+                .aspect_ratio = {.desired = 1.66f, .deviation = 0.721f, .weight = 0.15f},
+            },
+    },
+    WeightRangeTuning{
+        .range_m = 0.252f,
+        .profile =
+            {
+                .spread = {.desired = 0.0150f, .deviation = 0.0027f, .weight = 0.30f},
+                .extent = {.desired = 0.0449f, .deviation = 0.0096f, .weight = 0.20f},
+                .diameter_mm = {.desired = 35.0f, .deviation = 10.0f, .weight = 0.6f},
+                .aspect_ratio = {.desired = 2.068f, .deviation = 0.497f, .weight = 0.15f},
+            },
+    },
+    WeightRangeTuning{
+        .range_m = 0.430,
+        .profile =
+            {
+                .spread = {.desired = 0.0152f, .deviation = 0.0013f, .weight = 0.30f},
+                .extent = {.desired = 0.0433f, .deviation = 0.0040f, .weight = 0.20f},
+                .diameter_mm = {.desired = 40.0f, .deviation = 10.0f, .weight = 0.6f},
+                .aspect_ratio = {.desired = 2.295f, .deviation = 0.681f, .weight = 0.15f},
+            },
+    },
+    WeightRangeTuning{
+        .range_m = 0.643,
+        .profile =
+            {
+                .spread = {.desired = 0.0114f, .deviation = 0.0016f, .weight = 0.30f},
+                .extent = {.desired = 0.0294f, .deviation = 0.005f, .weight = 0.20f},
+                .diameter_mm = {.desired = 29.39f, .deviation = 10.0f, .weight = 0.6f},
+                .aspect_ratio = {.desired = 2.834f, .deviation = 1.349f, .weight = 0.15f},
+            },
+    },
+    WeightRangeTuning{
+        .range_m = 0.845f,
+        .profile =
+            {
+                .spread = {.desired = 0.0119f, .deviation = 0.0019f, .weight = 0.30f},
+                .extent = {.desired = 0.0246f, .deviation = 0.0048f, .weight = 0.20f},
+                .diameter_mm = {.desired = 24.56f, .deviation = 4.84f, .weight = 0.6f},
+                .aspect_ratio = {.desired = 1.941f, .deviation = 2.162f, .weight = 0.15f},
+            },
+    },
 };
 
-inline float interpolate_weight_tuning_alpha(float range_m) {
-    const float span =
-        WEIGHT_TARGET_RANGE_TUNING.far_range_m - WEIGHT_TARGET_RANGE_TUNING.near_range_m;
+inline float interpolate_weight_tuning_alpha(float range_m, float near_range_m, float far_range_m) {
+    const float span = far_range_m - near_range_m;
     if (span <= 1e-6f) {
         return 0.0f;
     }
 
-    return std::clamp((range_m - WEIGHT_TARGET_RANGE_TUNING.near_range_m) / span, 0.0f, 1.0f);
+    return std::clamp((range_m - near_range_m) / span, 0.0f, 1.0f);
 }
 
 inline float lerp_weight_tuning(float near_value, float far_value, float alpha) {
@@ -83,18 +115,37 @@ inline WeightScoreMetricTuning interpolate_metric_tuning(const WeightScoreMetric
 }
 
 inline WeightScoreProfileTuning interpolate_weight_score_profile(float range_m) {
-    const float alpha = interpolate_weight_tuning_alpha(range_m);
+    const auto &first_sample = WEIGHT_TARGET_RANGE_TUNING.front();
+    const auto &last_sample = WEIGHT_TARGET_RANGE_TUNING.back();
 
-    return {
-        .spread = interpolate_metric_tuning(WEIGHT_TARGET_RANGE_TUNING.near_profile.spread,
-                                            WEIGHT_TARGET_RANGE_TUNING.far_profile.spread, alpha),
-        .extent = interpolate_metric_tuning(WEIGHT_TARGET_RANGE_TUNING.near_profile.extent,
-                                            WEIGHT_TARGET_RANGE_TUNING.far_profile.extent, alpha),
-        .diameter_mm =
-            interpolate_metric_tuning(WEIGHT_TARGET_RANGE_TUNING.near_profile.diameter_mm,
-                                      WEIGHT_TARGET_RANGE_TUNING.far_profile.diameter_mm, alpha),
-        .aspect_ratio =
-            interpolate_metric_tuning(WEIGHT_TARGET_RANGE_TUNING.near_profile.aspect_ratio,
-                                      WEIGHT_TARGET_RANGE_TUNING.far_profile.aspect_ratio, alpha),
-    };
+    if (range_m <= first_sample.range_m) {
+        return first_sample.profile;
+    }
+
+    if (range_m >= last_sample.range_m) {
+        return last_sample.profile;
+    }
+
+    for (size_t i = 0; i + 1 < WEIGHT_TARGET_RANGE_TUNING.size(); ++i) {
+        const auto &near_sample = WEIGHT_TARGET_RANGE_TUNING[i];
+        const auto &far_sample = WEIGHT_TARGET_RANGE_TUNING[i + 1];
+
+        if (range_m <= far_sample.range_m) {
+            const float alpha =
+                interpolate_weight_tuning_alpha(range_m, near_sample.range_m, far_sample.range_m);
+
+            return {
+                .spread = interpolate_metric_tuning(near_sample.profile.spread,
+                                                    far_sample.profile.spread, alpha),
+                .extent = interpolate_metric_tuning(near_sample.profile.extent,
+                                                    far_sample.profile.extent, alpha),
+                .diameter_mm = interpolate_metric_tuning(near_sample.profile.diameter_mm,
+                                                         far_sample.profile.diameter_mm, alpha),
+                .aspect_ratio = interpolate_metric_tuning(near_sample.profile.aspect_ratio,
+                                                          far_sample.profile.aspect_ratio, alpha),
+            };
+        }
+    }
+
+    return last_sample.profile;
 }

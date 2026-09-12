@@ -191,6 +191,8 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
     let mut map_center_y_slider = FIELD_HEIGHT_Y_METERS * 0.5;
     let mut prev_mouse_down = false;
     let mut tracking_circle: Option<TrackingCircle> = None;
+    let mut target_cycle_index: usize = 0;
+    let mut summing_paused = false;
 
     while !rl.window_should_close() {
         let mut y = 0;
@@ -238,7 +240,13 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
         let right_mouse_pressed = rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_RIGHT);
         let toggle_pressed = rl.is_key_pressed(KeyboardKey::KEY_T);
         let clear_tracker_pressed = rl.is_key_pressed(KeyboardKey::KEY_BACKSPACE);
+        let cycle_target_pressed = rl.is_key_pressed(KeyboardKey::KEY_TAB);
+        let pause_summing_pressed = rl.is_key_pressed(KeyboardKey::KEY_SPACE);
         prev_mouse_down = mouse_down;
+
+        if pause_summing_pressed {
+            summing_paused = !summing_paused;
+        }
 
         let mut d = rl.begin_drawing(&thread);
         d.clear_background(Color::WHITE);
@@ -383,6 +391,7 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
         if right_mouse_pressed {
             let center_world = screen_to_world(mouse_pos);
             tracking_circle = Some(TrackingCircle::new(center_world, 0.05));
+            target_cycle_index = 0;
         }
 
         let bl = world_to_screen(0.0, 0.0);
@@ -439,6 +448,7 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
         {
             let mut hovered_cluster: Option<HoverCluster> = None;
             let mut hovered_distance_px = f32::INFINITY;
+            let mut tuning_candidates: Vec<Cluster> = Vec::new();
 
             let mut nearest_tracking_cluster: Option<Cluster> = None;
             let mut nearest_tracking_distance_m = f32::INFINITY;
@@ -608,6 +618,7 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
                 let radius_px = (radius_m * pixels_per_meter).max(2.0);
 
                 d.draw_circle_lines_v(c_screen, radius_px, Color::GREEN);
+                tuning_candidates.push(cluster);
 
                 if mouse_distance_px <= radius_px.max(6.0)
                     && mouse_distance_px < hovered_distance_px
@@ -630,11 +641,31 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
                 }
             }
 
+            if tracking_circle.is_some() && !tuning_candidates.is_empty() {
+                if target_cycle_index >= tuning_candidates.len() {
+                    target_cycle_index = 0;
+                }
+
+                if cycle_target_pressed {
+                    target_cycle_index = (target_cycle_index + 1) % tuning_candidates.len();
+
+                    if let Some(tracker) = tracking_circle.as_mut() {
+                        let selected = tuning_candidates[target_cycle_index];
+                        tracker.center_world =
+                            Vector2::new(selected.centroid_x, selected.centroid_y);
+                        tracker.radius_m =
+                            ((selected.diameter_mm.max(0.0) / 1000.0) * 0.5).max(0.05);
+                    }
+                }
+            }
+
             if let Some(tracker) = tracking_circle.as_mut() {
-                if let Some(cluster) = nearest_tracking_cluster {
-                    tracker.observe_cluster(cluster);
-                } else {
-                    tracker.missed_frames += 1;
+                if !summing_paused {
+                    if let Some(cluster) = nearest_tracking_cluster {
+                        tracker.observe_cluster(cluster);
+                    } else {
+                        tracker.missed_frames += 1;
+                    }
                 }
 
                 let tracker_screen =
@@ -702,11 +733,26 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
 
             if let Some(tracker) = tracking_circle {
                 d.draw_text(
-                    "Tracker (RMB place, Backspace clear)",
+                    "Tracker (RMB place, Backspace clear, Tab switch target, Space pause)",
                     20,
                     530,
                     20,
                     Color::MAROON,
+                );
+                d.draw_text(
+                    if summing_paused {
+                        "Summing: Paused"
+                    } else {
+                        "Summing: Live"
+                    },
+                    20,
+                    545,
+                    18,
+                    if summing_paused {
+                        Color::RED
+                    } else {
+                        Color::DARKGREEN
+                    },
                 );
                 d.draw_text(
                     format!(
@@ -715,7 +761,7 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
                     )
                     .as_str(),
                     20,
-                    550,
+                    565,
                     18,
                     Color::BLACK,
                 );
@@ -727,7 +773,7 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
                     )
                     .as_str(),
                     20,
-                    570,
+                    585,
                     18,
                     Color::BLACK,
                 );
@@ -739,7 +785,7 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
                     )
                     .as_str(),
                     20,
-                    590,
+                    605,
                     18,
                     Color::BLACK,
                 );
@@ -751,7 +797,7 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
                     )
                     .as_str(),
                     20,
-                    610,
+                    625,
                     18,
                     Color::BLACK,
                 );
@@ -763,7 +809,7 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
                     )
                     .as_str(),
                     20,
-                    630,
+                    645,
                     18,
                     Color::BLACK,
                 );
@@ -775,7 +821,7 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
                     )
                     .as_str(),
                     20,
-                    650,
+                    665,
                     18,
                     Color::BLACK,
                 );
@@ -787,7 +833,7 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
                     )
                     .as_str(),
                     20,
-                    670,
+                    685,
                     18,
                     Color::BLACK,
                 );
