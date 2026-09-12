@@ -43,10 +43,10 @@ static constexpr std::array<WeightRangeTuning, 5> WEIGHT_TARGET_RANGE_TUNING = {
         .range_m = 0.05f,
         .profile =
             {
-                .spread = {.desired = 0.0034f, .deviation = 0.0015f, .weight = 0.30f},
-                .extent = {.desired = 0.0106f, .deviation = 0.0063f, .weight = 0.20f},
-                .diameter_mm = {.desired = 10.6f, .deviation = 10.0f, .weight = 0.6f},
-                .aspect_ratio = {.desired = 1.66f, .deviation = 0.721f, .weight = 0.15f},
+                .spread = {.desired = 0.0095f, .deviation = 0.0017f, .weight = 0.30f},
+                .extent = {.desired = 0.0283f, .deviation = 0.0063f, .weight = 0.20f},
+                .diameter_mm = {.desired = 28.33f, .deviation = 6.28f, .weight = 0.6f},
+                .aspect_ratio = {.desired = 1.73f, .deviation = 0.89f, .weight = 0.15f},
             },
     },
     WeightRangeTuning{

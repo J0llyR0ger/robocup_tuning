@@ -1,4 +1,4 @@
-use std::f32::consts::PI;
+use std::{collections::HashMap, f32::consts::PI};
 
 use raylib::prelude::*;
 use zerocopy::IntoBytes;
@@ -12,7 +12,14 @@ use crate::{
         KEY_RIGHT_COMMAND, KEY_RIGHT_WHEEL_VELOCITY, KEY_TURN_ERROR, KEY_WEIGHT_ASPECT,
         KEY_WEIGHT_CONFIDENCE, KEY_WEIGHT_DIAMETER, KEY_WEIGHT_EXTENT, KEY_WEIGHT_POINT_COUNT,
         KEY_WEIGHT_RANGE, KEY_WEIGHT_SPREAD, KEY_WEIGHT_TARGET_X, KEY_WEIGHT_TARGET_Y,
-        VALUE_TYPE_FLOAT32,
+        KEY_WEIGHT_TUNING_ASPECT_DESIRED_BASE, KEY_WEIGHT_TUNING_ASPECT_DEVIATION_BASE,
+        KEY_WEIGHT_TUNING_ASPECT_WEIGHT_BASE, KEY_WEIGHT_TUNING_DIAMETER_DESIRED_BASE,
+        KEY_WEIGHT_TUNING_DIAMETER_DEVIATION_BASE, KEY_WEIGHT_TUNING_DIAMETER_WEIGHT_BASE,
+        KEY_WEIGHT_TUNING_EXTENT_DESIRED_BASE, KEY_WEIGHT_TUNING_EXTENT_DEVIATION_BASE,
+        KEY_WEIGHT_TUNING_EXTENT_WEIGHT_BASE, KEY_WEIGHT_TUNING_RANGE_BASE,
+        KEY_WEIGHT_TUNING_SAMPLE_COUNT, KEY_WEIGHT_TUNING_SPREAD_DESIRED_BASE,
+        KEY_WEIGHT_TUNING_SPREAD_DEVIATION_BASE, KEY_WEIGHT_TUNING_SPREAD_WEIGHT_BASE,
+        VALUE_TYPE_FLOAT32, VALUE_TYPE_UINT32,
     },
     telemetry_state::{TELEMETRY, TypedValue},
 };
@@ -117,6 +124,27 @@ struct HoverCluster {
     radius_m: f32,
 }
 
+#[derive(Copy, Clone)]
+struct WeightScoreMetricTuningView {
+    desired: f32,
+    deviation: f32,
+    weight: f32,
+}
+
+#[derive(Copy, Clone)]
+struct WeightScoreProfileTuningView {
+    spread: WeightScoreMetricTuningView,
+    extent: WeightScoreMetricTuningView,
+    diameter_mm: WeightScoreMetricTuningView,
+    aspect_ratio: WeightScoreMetricTuningView,
+}
+
+#[derive(Copy, Clone)]
+struct WeightRangeTuningView {
+    range_m: f32,
+    profile: WeightScoreProfileTuningView,
+}
+
 fn point_in_rect(point: Vector2, rect: Rectangle) -> bool {
     point.x >= rect.x
         && point.x <= rect.x + rect.width
@@ -173,6 +201,172 @@ fn value_as_f32(value: Option<&TypedValue>) -> Option<f32> {
         }
         _ => None,
     }
+}
+
+fn value_as_u32(value: Option<&TypedValue>) -> Option<u32> {
+    match value {
+        Some(v) if v.value_type == VALUE_TYPE_UINT32 => Some(v.payload),
+        _ => None,
+    }
+}
+
+fn read_metric_tuning(
+    values: &HashMap<u16, TypedValue>,
+    desired_key: u16,
+    deviation_key: u16,
+    weight_key: u16,
+) -> Option<WeightScoreMetricTuningView> {
+    Some(WeightScoreMetricTuningView {
+        desired: value_as_f32(values.get(&desired_key))?,
+        deviation: value_as_f32(values.get(&deviation_key))?,
+        weight: value_as_f32(values.get(&weight_key))?,
+    })
+}
+
+fn read_weight_tuning_samples(values: &HashMap<u16, TypedValue>) -> Vec<WeightRangeTuningView> {
+    let sample_count = value_as_u32(values.get(&KEY_WEIGHT_TUNING_SAMPLE_COUNT)).unwrap_or(0);
+    let mut samples = Vec::new();
+
+    for sample_index in 0..sample_count {
+        let sample_offset = sample_index as u16;
+
+        let Some(range_m) =
+            value_as_f32(values.get(&(KEY_WEIGHT_TUNING_RANGE_BASE + sample_offset)))
+        else {
+            continue;
+        };
+
+        let Some(spread) = read_metric_tuning(
+            values,
+            KEY_WEIGHT_TUNING_SPREAD_DESIRED_BASE + sample_offset,
+            KEY_WEIGHT_TUNING_SPREAD_DEVIATION_BASE + sample_offset,
+            KEY_WEIGHT_TUNING_SPREAD_WEIGHT_BASE + sample_offset,
+        ) else {
+            continue;
+        };
+
+        let Some(extent) = read_metric_tuning(
+            values,
+            KEY_WEIGHT_TUNING_EXTENT_DESIRED_BASE + sample_offset,
+            KEY_WEIGHT_TUNING_EXTENT_DEVIATION_BASE + sample_offset,
+            KEY_WEIGHT_TUNING_EXTENT_WEIGHT_BASE + sample_offset,
+        ) else {
+            continue;
+        };
+
+        let Some(diameter_mm) = read_metric_tuning(
+            values,
+            KEY_WEIGHT_TUNING_DIAMETER_DESIRED_BASE + sample_offset,
+            KEY_WEIGHT_TUNING_DIAMETER_DEVIATION_BASE + sample_offset,
+            KEY_WEIGHT_TUNING_DIAMETER_WEIGHT_BASE + sample_offset,
+        ) else {
+            continue;
+        };
+
+        let Some(aspect_ratio) = read_metric_tuning(
+            values,
+            KEY_WEIGHT_TUNING_ASPECT_DESIRED_BASE + sample_offset,
+            KEY_WEIGHT_TUNING_ASPECT_DEVIATION_BASE + sample_offset,
+            KEY_WEIGHT_TUNING_ASPECT_WEIGHT_BASE + sample_offset,
+        ) else {
+            continue;
+        };
+
+        samples.push(WeightRangeTuningView {
+            range_m,
+            profile: WeightScoreProfileTuningView {
+                spread,
+                extent,
+                diameter_mm,
+                aspect_ratio,
+            },
+        });
+    }
+
+    samples.sort_by(|a, b| a.range_m.total_cmp(&b.range_m));
+    samples
+}
+
+fn interpolate_weight_tuning_alpha(range_m: f32, near_range_m: f32, far_range_m: f32) -> f32 {
+    let span = far_range_m - near_range_m;
+    if span <= 1e-6 {
+        return 0.0;
+    }
+
+    ((range_m - near_range_m) / span).clamp(0.0, 1.0)
+}
+
+fn lerp_weight_tuning(near_value: f32, far_value: f32, alpha: f32) -> f32 {
+    near_value + (far_value - near_value) * alpha
+}
+
+fn interpolate_metric_tuning(
+    near_metric: WeightScoreMetricTuningView,
+    far_metric: WeightScoreMetricTuningView,
+    alpha: f32,
+) -> WeightScoreMetricTuningView {
+    WeightScoreMetricTuningView {
+        desired: lerp_weight_tuning(near_metric.desired, far_metric.desired, alpha),
+        deviation: lerp_weight_tuning(near_metric.deviation, far_metric.deviation, alpha),
+        weight: lerp_weight_tuning(near_metric.weight, far_metric.weight, alpha),
+    }
+}
+
+fn interpolate_weight_score_profile(
+    samples: &[WeightRangeTuningView],
+    range_m: f32,
+) -> Option<WeightScoreProfileTuningView> {
+    let first = samples.first()?;
+    let last = samples.last()?;
+
+    if range_m <= first.range_m {
+        return Some(first.profile);
+    }
+
+    if range_m >= last.range_m {
+        return Some(last.profile);
+    }
+
+    for window in samples.windows(2) {
+        let near_sample = window[0];
+        let far_sample = window[1];
+
+        if range_m <= far_sample.range_m {
+            let alpha =
+                interpolate_weight_tuning_alpha(range_m, near_sample.range_m, far_sample.range_m);
+
+            return Some(WeightScoreProfileTuningView {
+                spread: interpolate_metric_tuning(
+                    near_sample.profile.spread,
+                    far_sample.profile.spread,
+                    alpha,
+                ),
+                extent: interpolate_metric_tuning(
+                    near_sample.profile.extent,
+                    far_sample.profile.extent,
+                    alpha,
+                ),
+                diameter_mm: interpolate_metric_tuning(
+                    near_sample.profile.diameter_mm,
+                    far_sample.profile.diameter_mm,
+                    alpha,
+                ),
+                aspect_ratio: interpolate_metric_tuning(
+                    near_sample.profile.aspect_ratio,
+                    far_sample.profile.aspect_ratio,
+                    alpha,
+                ),
+            });
+        }
+    }
+
+    Some(last.profile)
+}
+
+fn score_metric(value: f32, metric: WeightScoreMetricTuningView) -> f32 {
+    let safe_stddev = metric.deviation.max(1e-4);
+    let z_score = (value - metric.desired) / safe_stddev;
+    (-0.5 * z_score * z_score).exp()
 }
 
 pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::Error>> {
@@ -446,6 +640,7 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
             || !telemetry.lidar_points.is_empty()
             || !telemetry.tracked_weights.is_empty()
         {
+            let tuning_samples = read_weight_tuning_samples(&telemetry.values);
             let mut hovered_cluster: Option<HoverCluster> = None;
             let mut hovered_distance_px = f32::INFINITY;
             let mut tuning_candidates: Vec<Cluster> = Vec::new();
@@ -729,6 +924,95 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
                     18,
                     Color::BLACK,
                 );
+
+                d.draw_text("Tuning Match", 300, 360, 20, Color::DARKBLUE);
+
+                if let Some(profile) =
+                    interpolate_weight_score_profile(&tuning_samples, hover.cluster.range)
+                {
+                    let spread_score = score_metric(hover.cluster.spread, profile.spread);
+                    let extent_score = score_metric(hover.cluster.max_extent, profile.extent);
+                    let diameter_score =
+                        score_metric(hover.cluster.diameter_mm, profile.diameter_mm);
+                    let aspect_score =
+                        score_metric(hover.cluster.aspect_ratio, profile.aspect_ratio);
+
+                    let weight_sum = (profile.spread.weight
+                        + profile.extent.weight
+                        + profile.diameter_mm.weight
+                        + profile.aspect_ratio.weight)
+                        .max(1e-6);
+
+                    let combined_score = (spread_score * profile.spread.weight
+                        + extent_score * profile.extent.weight
+                        + diameter_score * profile.diameter_mm.weight
+                        + aspect_score * profile.aspect_ratio.weight)
+                        / weight_sum;
+
+                    d.draw_text(
+                        format!(
+                            "spread d/dev: {:.4} / {:.4}, score {:.3}",
+                            profile.spread.desired, profile.spread.deviation, spread_score
+                        )
+                        .as_str(),
+                        300,
+                        382,
+                        18,
+                        Color::BLACK,
+                    );
+                    d.draw_text(
+                        format!(
+                            "extent d/dev: {:.4} / {:.4}, score {:.3}",
+                            profile.extent.desired, profile.extent.deviation, extent_score
+                        )
+                        .as_str(),
+                        300,
+                        402,
+                        18,
+                        Color::BLACK,
+                    );
+                    d.draw_text(
+                        format!(
+                            "diam d/dev: {:.2} / {:.2}, score {:.3}",
+                            profile.diameter_mm.desired,
+                            profile.diameter_mm.deviation,
+                            diameter_score
+                        )
+                        .as_str(),
+                        300,
+                        422,
+                        18,
+                        Color::BLACK,
+                    );
+                    d.draw_text(
+                        format!(
+                            "aspect d/dev: {:.3} / {:.3}, score {:.3}",
+                            profile.aspect_ratio.desired,
+                            profile.aspect_ratio.deviation,
+                            aspect_score
+                        )
+                        .as_str(),
+                        300,
+                        442,
+                        18,
+                        Color::BLACK,
+                    );
+                    d.draw_text(
+                        format!("combined weighted score: {:.3}", combined_score).as_str(),
+                        300,
+                        462,
+                        18,
+                        Color::MAROON,
+                    );
+                } else {
+                    d.draw_text(
+                        "No tuning samples received from firmware yet",
+                        300,
+                        382,
+                        18,
+                        Color::GRAY,
+                    );
+                }
             }
 
             if let Some(tracker) = tracking_circle {

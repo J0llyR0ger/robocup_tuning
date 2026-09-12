@@ -36,6 +36,58 @@ float score_cluster_for_weight_target(const Cluster &cluster) {
            weight_sum;
 }
 
+void publish_weight_tuning_values() {
+    telemetry::publish_u32(telemetry::KEY_WEIGHT_TUNING_SAMPLE_COUNT,
+                           static_cast<uint32_t>(WEIGHT_TARGET_RANGE_TUNING.size()));
+
+    for (size_t i = 0; i < WEIGHT_TARGET_RANGE_TUNING.size(); ++i) {
+        const auto &sample = WEIGHT_TARGET_RANGE_TUNING[i];
+
+        telemetry::publish_f32(telemetry::KEY_WEIGHT_TUNING_RANGE_BASE + static_cast<uint16_t>(i),
+                               sample.range_m);
+
+        telemetry::publish_f32(telemetry::KEY_WEIGHT_TUNING_SPREAD_DESIRED_BASE +
+                                   static_cast<uint16_t>(i),
+                               sample.profile.spread.desired);
+        telemetry::publish_f32(telemetry::KEY_WEIGHT_TUNING_SPREAD_DEVIATION_BASE +
+                                   static_cast<uint16_t>(i),
+                               sample.profile.spread.deviation);
+        telemetry::publish_f32(telemetry::KEY_WEIGHT_TUNING_SPREAD_WEIGHT_BASE +
+                                   static_cast<uint16_t>(i),
+                               sample.profile.spread.weight);
+
+        telemetry::publish_f32(telemetry::KEY_WEIGHT_TUNING_EXTENT_DESIRED_BASE +
+                                   static_cast<uint16_t>(i),
+                               sample.profile.extent.desired);
+        telemetry::publish_f32(telemetry::KEY_WEIGHT_TUNING_EXTENT_DEVIATION_BASE +
+                                   static_cast<uint16_t>(i),
+                               sample.profile.extent.deviation);
+        telemetry::publish_f32(telemetry::KEY_WEIGHT_TUNING_EXTENT_WEIGHT_BASE +
+                                   static_cast<uint16_t>(i),
+                               sample.profile.extent.weight);
+
+        telemetry::publish_f32(telemetry::KEY_WEIGHT_TUNING_DIAMETER_DESIRED_BASE +
+                                   static_cast<uint16_t>(i),
+                               sample.profile.diameter_mm.desired);
+        telemetry::publish_f32(telemetry::KEY_WEIGHT_TUNING_DIAMETER_DEVIATION_BASE +
+                                   static_cast<uint16_t>(i),
+                               sample.profile.diameter_mm.deviation);
+        telemetry::publish_f32(telemetry::KEY_WEIGHT_TUNING_DIAMETER_WEIGHT_BASE +
+                                   static_cast<uint16_t>(i),
+                               sample.profile.diameter_mm.weight);
+
+        telemetry::publish_f32(telemetry::KEY_WEIGHT_TUNING_ASPECT_DESIRED_BASE +
+                                   static_cast<uint16_t>(i),
+                               sample.profile.aspect_ratio.desired);
+        telemetry::publish_f32(telemetry::KEY_WEIGHT_TUNING_ASPECT_DEVIATION_BASE +
+                                   static_cast<uint16_t>(i),
+                               sample.profile.aspect_ratio.deviation);
+        telemetry::publish_f32(telemetry::KEY_WEIGHT_TUNING_ASPECT_WEIGHT_BASE +
+                                   static_cast<uint16_t>(i),
+                               sample.profile.aspect_ratio.weight);
+    }
+}
+
 void apply_cluster_to_track(WeightTrackedTarget &track, const Cluster &observation,
                             float observation_score, float position_alpha) {
     const Eigen::Vector2f previous_centroid = track.cluster.centroid;
@@ -60,6 +112,8 @@ void LidarProcessingTask::loop() {
 
     this->last_result = processing.process_points(points, pose);
     this->has_last_result = true;
+
+    publish_weight_tuning_values();
 
     update_weight_target();
 
