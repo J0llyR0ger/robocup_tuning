@@ -53,7 +53,7 @@ void AutonomousCommandTask::loop() {
 
         this->motion_control_task->set_current_path({robot_position, best_track.cluster.centroid});
 
-        if (closest_weight_distance < 0.5) {
+        if (closest_weight_distance < 0.7) {
             this->locked_weight_target = best_track.cluster.centroid;
             this->intake_task->set_position(false);
         }
