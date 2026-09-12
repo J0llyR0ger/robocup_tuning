@@ -1,8 +1,6 @@
 #pragma once
 
-#include <algorithm>
 #include <array>
-#include <cstdint>
 
 struct WeightScoreMetricTuning {
     float desired = 0.0f;
@@ -22,17 +20,24 @@ struct WeightRangeTuning {
     WeightScoreProfileTuning profile;
 };
 
-// Weight Tracking Tuning
+// Minimum score required to start tracking cluster
 static constexpr float WEIGHT_TARGET_MIN_TRACK_CANDIDATE_SCORE = 0.30f;
 
-static constexpr size_t WEIGHT_TARGET_MAX_TRACKS = 8;
+// Maximum number of trackable weights
+static constexpr int WEIGHT_TARGET_MAX_TRACKS = 8;
+
+// Max allowable target position noise
+// TODO: Lower this, its way to big
 static constexpr float WEIGHT_TARGET_TRACK_ASSOCIATION_DISTANCE_M = 0.12f;
+
+// Position update aggressiveness
 static constexpr float WEIGHT_TARGET_TRACK_POSITION_ALPHA = 0.30f;
+
 static constexpr float WEIGHT_TARGET_TRACK_CONFIDENCE_GAIN = 0.12f;
 static constexpr float WEIGHT_TARGET_TRACK_INITIAL_CONFIDENCE_SCALE = 0.60f;
 static constexpr float WEIGHT_TARGET_TRACK_CONFIDENCE_DECAY = 0.04f;
 static constexpr float WEIGHT_TARGET_TRACK_FORGET_CONFIDENCE = 0.05f;
-static constexpr uint16_t WEIGHT_TARGET_TRACK_MAX_MISSED_UPDATES = 20;
+static constexpr int WEIGHT_TARGET_TRACK_MAX_MISSED_UPDATES = 20;
 
 // Cluster Identification Tuning
 static constexpr int WEIGHT_TARGET_MIN_CLUSTER_COUNT = 4;
@@ -90,62 +95,3 @@ static constexpr std::array<WeightRangeTuning, 5> WEIGHT_TARGET_RANGE_TUNING = {
             },
     },
 };
-
-inline float interpolate_weight_tuning_alpha(float range_m, float near_range_m, float far_range_m) {
-    const float span = far_range_m - near_range_m;
-    if (span <= 1e-6f) {
-        return 0.0f;
-    }
-
-    return std::clamp((range_m - near_range_m) / span, 0.0f, 1.0f);
-}
-
-inline float lerp_weight_tuning(float near_value, float far_value, float alpha) {
-    return near_value + (far_value - near_value) * alpha;
-}
-
-inline WeightScoreMetricTuning interpolate_metric_tuning(const WeightScoreMetricTuning &near_metric,
-                                                         const WeightScoreMetricTuning &far_metric,
-                                                         float alpha) {
-    return {
-        .desired = lerp_weight_tuning(near_metric.desired, far_metric.desired, alpha),
-        .deviation = lerp_weight_tuning(near_metric.deviation, far_metric.deviation, alpha),
-        .weight = lerp_weight_tuning(near_metric.weight, far_metric.weight, alpha),
-    };
-}
-
-inline WeightScoreProfileTuning interpolate_weight_score_profile(float range_m) {
-    const auto &first_sample = WEIGHT_TARGET_RANGE_TUNING.front();
-    const auto &last_sample = WEIGHT_TARGET_RANGE_TUNING.back();
-
-    if (range_m <= first_sample.range_m) {
-        return first_sample.profile;
-    }
-
-    if (range_m >= last_sample.range_m) {
-        return last_sample.profile;
-    }
-
-    for (size_t i = 0; i + 1 < WEIGHT_TARGET_RANGE_TUNING.size(); ++i) {
-        const auto &near_sample = WEIGHT_TARGET_RANGE_TUNING[i];
-        const auto &far_sample = WEIGHT_TARGET_RANGE_TUNING[i + 1];
-
-        if (range_m <= far_sample.range_m) {
-            const float alpha =
-                interpolate_weight_tuning_alpha(range_m, near_sample.range_m, far_sample.range_m);
-
-            return {
-                .spread = interpolate_metric_tuning(near_sample.profile.spread,
-                                                    far_sample.profile.spread, alpha),
-                .extent = interpolate_metric_tuning(near_sample.profile.extent,
-                                                    far_sample.profile.extent, alpha),
-                .diameter_mm = interpolate_metric_tuning(near_sample.profile.diameter_mm,
-                                                         far_sample.profile.diameter_mm, alpha),
-                .aspect_ratio = interpolate_metric_tuning(near_sample.profile.aspect_ratio,
-                                                          far_sample.profile.aspect_ratio, alpha),
-            };
-        }
-    }
-
-    return last_sample.profile;
-}

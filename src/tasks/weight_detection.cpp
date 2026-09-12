@@ -2,6 +2,8 @@
 
 WeightDetectionTask::WeightDetectionTask() : SchedulerTask("weight_detection") {}
 
+static const int WEIGHT_DETECTION_DEBOUNCE_MS = 8;
+
 void WeightDetectionTask::setup() {
     if (!expander.begin(0x3E)) {
         Serial.println("Failed to communicate with SX1509. Check wiring!");

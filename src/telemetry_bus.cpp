@@ -3,6 +3,7 @@
 #include <config.hpp>
 #include <cstring>
 #include <lib/lidar_processing.hpp>
+#include <lib/weight_tracking.hpp>
 
 namespace telemetry {
 
@@ -265,7 +266,7 @@ void publish_occupancy_grid(const OccupancyGridMap &grid) {
     write_frame(FrameType::OccupancyGrid, payload.data(), payload_len);
 }
 
-void publish_tracked_weights(std::span<const TrackedWeight> tracked_weights) {
+void publish_tracked_weights(std::span<WeightTrackedTarget> tracked_weights) {
     constexpr size_t MAX_TRACKED_WEIGHTS_PER_FRAME = 8;
 
     TrackedWeightEntry entries[MAX_TRACKED_WEIGHTS_PER_FRAME] = {};
@@ -276,8 +277,8 @@ void publish_tracked_weights(std::span<const TrackedWeight> tracked_weights) {
 
     for (size_t i = 0; i < count; ++i) {
         entries[i] = {
-            .x_m = tracked_weights[i].x_m,
-            .y_m = tracked_weights[i].y_m,
+            .x_m = tracked_weights[i].cluster.centroid.x(),
+            .y_m = tracked_weights[i].cluster.centroid.y(),
             .confidence = tracked_weights[i].confidence,
         };
     }

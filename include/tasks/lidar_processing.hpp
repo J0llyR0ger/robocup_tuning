@@ -4,23 +4,8 @@
 #include "scheduler_task.hpp"
 #include "tasks/lidar.hpp"
 #include "tasks/position_tracking.hpp"
-#include "weight_tuning_config.hpp"
 #include <etl/vector.h>
-
-struct WeightTarget {
-    Eigen::Vector2f position = Eigen::Vector2f::Zero();
-    float confidence = 0.0f;
-    bool valid = false;
-};
-
-struct WeightTrackedTarget {
-    Cluster cluster{};
-    float confidence = 0.0f;
-    float last_observation_score = 0.0f;
-
-    uint16_t missed_updates = 0;
-    bool matched_this_update = false;
-};
+#include <lib/weight_tracking.hpp>
 
 class LidarProcessingTask : public SchedulerTask {
   private:
@@ -28,9 +13,9 @@ class LidarProcessingTask : public SchedulerTask {
     PositionTrackingTask *position_tracking_task;
     LidarProcessingResult last_result{};
     bool has_last_result = false;
-    etl::vector<WeightTrackedTarget, WEIGHT_TARGET_MAX_TRACKS> tracked_targets;
 
-    void update_weight_target();
+    WeightTracking weight_tracking = WeightTracking();
+    LidarProcessing lidar_processing = LidarProcessing();
 
   public:
     LidarProcessingTask(LidarTask *lidar_reader_task, PositionTrackingTask *position_tracking_task);
