@@ -3,7 +3,7 @@ use std::{
     sync::{LazyLock, Mutex},
 };
 
-use crate::protocol::{LidarPoint, LidarProcessing, OccupancyGrid};
+use crate::protocol::{LidarPoint, LidarProcessing, OccupancyGrid, TrackedWeight};
 
 #[derive(Copy, Clone, Debug)]
 pub struct TypedValue {
@@ -17,6 +17,7 @@ pub struct TelemetrySnapshot {
     pub lidar_points: Vec<LidarPoint>,
     pub lidar_processing: LidarProcessing,
     pub occupancy_grid: Option<OccupancyGrid>,
+    pub tracked_weights: Vec<TrackedWeight>,
 }
 
 impl TelemetrySnapshot {
@@ -29,6 +30,7 @@ impl TelemetrySnapshot {
                 clusters: vec![],
             },
             occupancy_grid: None,
+            tracked_weights: Vec::new(),
         }
     }
 }

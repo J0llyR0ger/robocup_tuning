@@ -279,5 +279,8 @@ fn apply_frame(frame: TelemetryFrame) {
         TelemetryFrame::OccupancyGrid(grid) => {
             telemetry.occupancy_grid = Some(grid);
         }
+        TelemetryFrame::TrackedWeights(tracked_weights) => {
+            telemetry.tracked_weights = tracked_weights;
+        }
     }
 }

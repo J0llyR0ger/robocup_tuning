@@ -65,6 +65,24 @@ void LidarProcessingTask::loop() {
 
     telemetry::publish_lidar_points(this->last_result.transformed_points);
     telemetry::publish_lidar_processing(this->last_result);
+
+    telemetry::TrackedWeight tracked_weights[WEIGHT_TARGET_MAX_TRACKS] = {};
+    size_t tracked_weight_count = 0;
+
+    for (const auto &track : this->tracked_targets) {
+        if (tracked_weight_count >= WEIGHT_TARGET_MAX_TRACKS) {
+            break;
+        }
+
+        tracked_weights[tracked_weight_count++] = {
+            .x_m = track.cluster.centroid.x(),
+            .y_m = track.cluster.centroid.y(),
+            .confidence = track.confidence,
+        };
+    }
+
+    telemetry::publish_tracked_weights(
+        std::span<const telemetry::TrackedWeight>(tracked_weights, tracked_weight_count));
 }
 
 bool LidarProcessingTask::has_result() const { return this->has_last_result; }

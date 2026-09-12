@@ -7,6 +7,7 @@ pub const FRAME_TYPE_VALUES: u8 = 1;
 pub const FRAME_TYPE_LIDAR: u8 = 2;
 pub const FRAME_TYPE_LIDAR_PROCESSING: u8 = 3;
 pub const FRAME_TYPE_OCCUPANCY_GRID: u8 = 4;
+pub const FRAME_TYPE_TRACKED_WEIGHTS: u8 = 5;
 
 pub const VALUE_TYPE_FLOAT32: u8 = 1;
 pub const VALUE_TYPE_INT32: u8 = 2;
@@ -95,12 +96,20 @@ pub struct OccupancyGrid {
     pub scores: Vec<u8>,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct TrackedWeight {
+    pub x_m: f32,
+    pub y_m: f32,
+    pub confidence: f32,
+}
+
 #[derive(Clone, Debug)]
 pub enum TelemetryFrame {
     Values(Vec<ValueEntry>),
     Lidar(Vec<LidarPoint>),
     LidarProcessing(LidarProcessing),
     OccupancyGrid(OccupancyGrid),
+    TrackedWeights(Vec<TrackedWeight>),
 }
 
 pub fn parse_frame(frame_type: u8, payload: &[u8]) -> Option<TelemetryFrame> {
@@ -249,6 +258,47 @@ pub fn parse_frame(frame_type: u8, payload: &[u8]) -> Option<TelemetryFrame> {
                 tile_size_mm,
                 scores,
             }))
+        }
+        FRAME_TYPE_TRACKED_WEIGHTS => {
+            let count = u16::from_le_bytes([payload[0], payload[1]]) as usize;
+            let body = &payload[2..];
+
+            let entry_size = 12usize;
+            if body.len() < count * entry_size {
+                return None;
+            }
+
+            let mut tracked_weights = Vec::with_capacity(count);
+            for i in 0..count {
+                let base = i * entry_size;
+
+                let x_m = f32::from_le_bytes([
+                    body[base],
+                    body[base + 1],
+                    body[base + 2],
+                    body[base + 3],
+                ]);
+                let y_m = f32::from_le_bytes([
+                    body[base + 4],
+                    body[base + 5],
+                    body[base + 6],
+                    body[base + 7],
+                ]);
+                let confidence = f32::from_le_bytes([
+                    body[base + 8],
+                    body[base + 9],
+                    body[base + 10],
+                    body[base + 11],
+                ]);
+
+                tracked_weights.push(TrackedWeight {
+                    x_m,
+                    y_m,
+                    confidence,
+                });
+            }
+
+            Some(TelemetryFrame::TrackedWeights(tracked_weights))
         }
         _ => None,
     }

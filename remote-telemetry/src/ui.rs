@@ -433,7 +433,10 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
             }
         }
 
-        if !telemetry.values.is_empty() || !telemetry.lidar_points.is_empty() {
+        if !telemetry.values.is_empty()
+            || !telemetry.lidar_points.is_empty()
+            || !telemetry.tracked_weights.is_empty()
+        {
             let mut hovered_cluster: Option<HoverCluster> = None;
             let mut hovered_distance_px = f32::INFINITY;
 
@@ -573,6 +576,21 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
                 let end_screen = world_to_screen(line.x2, line.y2);
 
                 d.draw_line_ex(start_screen, end_screen, 2.0, Color::GREEN);
+            }
+
+            for tracked_weight in telemetry.tracked_weights.iter().copied() {
+                let tracked_weight_screen = world_to_screen(tracked_weight.x_m, tracked_weight.y_m);
+
+                d.draw_circle_lines_v(tracked_weight_screen, 10.0, Color::ORANGE);
+                d.draw_circle_v(tracked_weight_screen, 3.0, Color::ORANGE);
+
+                d.draw_text(
+                    format!("{:.2}", tracked_weight.confidence).as_str(),
+                    (tracked_weight_screen.x + 12.0) as i32,
+                    (tracked_weight_screen.y - 8.0) as i32,
+                    16,
+                    Color::ORANGE,
+                );
             }
 
             for cluster in telemetry.lidar_processing.clusters.iter().copied() {

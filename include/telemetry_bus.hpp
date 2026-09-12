@@ -10,6 +10,12 @@
 
 namespace telemetry {
 
+struct TrackedWeight {
+    float x_m;
+    float y_m;
+    float confidence;
+};
+
 enum class ValueType : uint8_t {
     Float32 = 1,
     Int32 = 2,
@@ -55,5 +61,6 @@ size_t flush_values(uint16_t max_entries_per_frame = 32);
 void publish_lidar_points(std::span<LidarResponsePoint> points);
 void publish_lidar_processing(LidarProcessingResult result);
 void publish_occupancy_grid(const OccupancyGridMap &grid);
+void publish_tracked_weights(std::span<const TrackedWeight> tracked_weights);
 
 } // namespace telemetry
