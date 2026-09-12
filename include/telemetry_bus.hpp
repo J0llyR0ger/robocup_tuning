@@ -41,6 +41,7 @@ enum Key : uint16_t {
     KEY_WEIGHT_DIAMETER = 21,
     KEY_WEIGHT_ASPECT = 22,
     KEY_WEIGHT_RANGE = 23,
+    KEY_WEIGHT_POINT_COUNT = 24,
 };
 
 void begin(Stream *serial_port = &Serial);

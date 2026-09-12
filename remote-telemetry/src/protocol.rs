@@ -36,6 +36,7 @@ pub const KEY_WEIGHT_EXTENT: u16 = 20;
 pub const KEY_WEIGHT_DIAMETER: u16 = 21;
 pub const KEY_WEIGHT_ASPECT: u16 = 22;
 pub const KEY_WEIGHT_RANGE: u16 = 23;
+pub const KEY_WEIGHT_POINT_COUNT: u16 = 24;
 
 pub const TELEMETRY_FRAME_HEADER_LEN: usize = 8;
 

@@ -10,8 +10,9 @@ use crate::{
         KEY_LEFT_WHEEL_VELOCITY, KEY_LOOKAHEAD_X, KEY_LOOKAHEAD_Y, KEY_NEXTPOINT_X,
         KEY_NEXTPOINT_Y, KEY_PITCH, KEY_POSITION_UNCERTAINTY, KEY_POSITION_X, KEY_POSITION_Y,
         KEY_RIGHT_COMMAND, KEY_RIGHT_WHEEL_VELOCITY, KEY_TURN_ERROR, KEY_WEIGHT_ASPECT,
-        KEY_WEIGHT_CONFIDENCE, KEY_WEIGHT_DIAMETER, KEY_WEIGHT_EXTENT, KEY_WEIGHT_RANGE,
-        KEY_WEIGHT_SPREAD, KEY_WEIGHT_TARGET_X, KEY_WEIGHT_TARGET_Y, VALUE_TYPE_FLOAT32,
+        KEY_WEIGHT_CONFIDENCE, KEY_WEIGHT_DIAMETER, KEY_WEIGHT_EXTENT, KEY_WEIGHT_POINT_COUNT,
+        KEY_WEIGHT_RANGE, KEY_WEIGHT_SPREAD, KEY_WEIGHT_TARGET_X, KEY_WEIGHT_TARGET_Y,
+        VALUE_TYPE_FLOAT32,
     },
     telemetry_state::{TELEMETRY, TypedValue},
 };
@@ -365,6 +366,7 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
             let weight_target_diameter = value_as_f32(telemetry.values.get(&KEY_WEIGHT_DIAMETER));
             let weight_target_aspect = value_as_f32(telemetry.values.get(&KEY_WEIGHT_ASPECT));
             let weight_target_range = value_as_f32(telemetry.values.get(&KEY_WEIGHT_RANGE));
+            let weight_target_count = value_as_f32(telemetry.values.get(&KEY_WEIGHT_POINT_COUNT));
 
             if let (
                 Some(weight_target_x),
@@ -375,6 +377,7 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
                 Some(weight_target_diameter),
                 Some(weight_target_aspect),
                 Some(weight_target_range),
+                Some(weight_target_count),
             ) = (
                 weight_target_x,
                 weight_target_y,
@@ -384,6 +387,7 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
                 weight_target_diameter,
                 weight_target_aspect,
                 weight_target_range,
+                weight_target_count,
             ) {
                 let weight_target_screen = world_to_screen(weight_target_x, weight_target_y);
                 d.draw_circle_v(weight_target_screen, 6.0, Color::PURPLE);
@@ -429,6 +433,14 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
                     format!("Weight range: {}", weight_target_range).as_str(),
                     20,
                     320,
+                    20,
+                    Color::BLACK,
+                );
+
+                d.draw_text(
+                    format!("Weight point count: {}", weight_target_count).as_str(),
+                    20,
+                    340,
                     20,
                     Color::BLACK,
                 );

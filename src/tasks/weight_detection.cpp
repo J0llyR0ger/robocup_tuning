@@ -1,6 +1,7 @@
 #include "tasks/weight_detection.hpp"
 
 #include "telemetry_bus.hpp"
+#include "weight_tuning_config.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -18,6 +19,11 @@ struct WeightClusterSummary {
 
     int count = 0;
 };
+
+float score_metric(float value, const WeightScoreMetricTuning &metric) {
+    const float safe_deviation = std::max(metric.deviation, 1e-4f);
+    return std::clamp(1.0f - std::fabs(value - metric.desired) / safe_deviation, 0.0f, 1.0f);
+}
 
 WeightClusterSummary summarize_weight_cluster(std::span<const LidarResponsePoint> cluster) {
     WeightClusterSummary summary;
@@ -74,30 +80,21 @@ WeightClusterSummary summarize_weight_cluster(std::span<const LidarResponsePoint
         return summary;
     }
 
-    if (summary.diameter_mm < WEIGHT_TARGET_MIN_DIAMETER_MM ||
-        summary.diameter_mm > WEIGHT_TARGET_MAX_DIAMETER_MM) {
-        summary.score = 0.0f;
-        return summary;
-    }
+    const WeightScoreProfileTuning profile = interpolate_weight_score_profile(summary.range);
 
-    if (summary.aspect_ratio > WEIGHT_TARGET_MAX_ASPECT_RATIO) {
-        summary.score = 0.0f;
-        return summary;
-    }
+    const float spread_score = score_metric(summary.spread, profile.spread);
+    const float extent_score = score_metric(summary.max_extent, profile.extent);
+    const float diameter_score = score_metric(summary.diameter_mm, profile.diameter_mm);
+    const float aspect_score = score_metric(summary.aspect_ratio, profile.aspect_ratio);
 
-    const float size_score =
-        1.0f - std::clamp(std::fabs(summary.diameter_mm - WEIGHT_TARGET_DESIRED_DIAMETER_MM) /
-                              WEIGHT_TARGET_DIAMETER_DEVIATION_MM,
-                          0.0f, 1.0f);
+    const float weight_sum = std::max(profile.spread.weight + profile.extent.weight +
+                                          profile.diameter_mm.weight + profile.aspect_ratio.weight,
+                                      1e-6f);
 
-    const float compact_score = std::clamp(
-        1.0f - (summary.spread / std::max(summary.max_extent, WEIGHT_TARGET_MIN_CLUSTER_SPREAD)),
-        0.0f, 1.0f);
-
-    const float shape_score = std::clamp(
-        1.0f - (summary.aspect_ratio - 1.0f) / WEIGHT_TARGET_SHAPE_SCORE_SCALE, 0.0f, 1.0f);
-
-    summary.score = 0.45f * size_score + 0.35f * compact_score + 0.20f * shape_score;
+    summary.score =
+        (spread_score * profile.spread.weight + extent_score * profile.extent.weight +
+         diameter_score * profile.diameter_mm.weight + aspect_score * profile.aspect_ratio.weight) /
+        weight_sum;
 
     return summary;
 }
@@ -160,6 +157,8 @@ void WeightDetectionTask::update_weight_target() {
                                std::numeric_limits<float>::quiet_NaN());
         telemetry::publish_f32(telemetry::KEY_WEIGHT_RANGE,
                                std::numeric_limits<float>::quiet_NaN());
+        telemetry::publish_f32(telemetry::KEY_WEIGHT_POINT_COUNT,
+                               std::numeric_limits<float>::quiet_NaN());
     };
 
     if (this->lidar_processing_task == nullptr || !this->lidar_processing_task->has_result()) {
@@ -177,10 +176,6 @@ void WeightDetectionTask::update_weight_target() {
     float best_score = -1.0f;
 
     for (const auto &cluster : result.clusters) {
-        if (cluster.count < 4 || cluster.start + cluster.count > result.transformed_points.size()) {
-            continue;
-        }
-
         std::span<const LidarResponsePoint> cluster_points(
             result.transformed_points.data() + cluster.start, cluster.count);
         auto summary = summarize_weight_cluster(cluster_points);
@@ -211,6 +206,7 @@ void WeightDetectionTask::update_weight_target() {
     telemetry::publish_f32(telemetry::KEY_WEIGHT_DIAMETER, best_summary.diameter_mm);
     telemetry::publish_f32(telemetry::KEY_WEIGHT_ASPECT, best_summary.aspect_ratio);
     telemetry::publish_f32(telemetry::KEY_WEIGHT_RANGE, best_summary.range);
+    telemetry::publish_f32(telemetry::KEY_WEIGHT_POINT_COUNT, (float)best_summary.count);
 }
 
 bool WeightDetectionTask::has_weight_target() const { return this->current_weight_target.valid; }
