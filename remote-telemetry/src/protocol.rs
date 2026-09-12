@@ -28,6 +28,14 @@ pub const KEY_LOOKAHEAD_X: u16 = 12;
 pub const KEY_LOOKAHEAD_Y: u16 = 13;
 pub const KEY_NEXTPOINT_X: u16 = 14;
 pub const KEY_NEXTPOINT_Y: u16 = 15;
+pub const KEY_WEIGHT_TARGET_X: u16 = 16;
+pub const KEY_WEIGHT_TARGET_Y: u16 = 17;
+pub const KEY_WEIGHT_CONFIDENCE: u16 = 18;
+pub const KEY_WEIGHT_SPREAD: u16 = 19;
+pub const KEY_WEIGHT_EXTENT: u16 = 20;
+pub const KEY_WEIGHT_DIAMETER: u16 = 21;
+pub const KEY_WEIGHT_ASPECT: u16 = 22;
+pub const KEY_WEIGHT_RANGE: u16 = 23;
 
 pub const TELEMETRY_FRAME_HEADER_LEN: usize = 8;
 

@@ -1,6 +1,111 @@
 #include "tasks/weight_detection.hpp"
 
+#include "telemetry_bus.hpp"
+
+#include <algorithm>
+#include <cmath>
+#include <etl/vector.h>
+#include <limits>
+
+struct WeightClusterSummary {
+    Eigen::Vector2f centroid = Eigen::Vector2f::Zero();
+    float range = 0.0f;
+    float spread = 0.0f;
+    float max_extent = 0.0f;
+    float diameter_mm = 0.0f;
+    float aspect_ratio = 1.0f;
+    float score = 0.0f;
+
+    int count = 0;
+};
+
+WeightClusterSummary summarize_weight_cluster(std::span<const LidarResponsePoint> cluster) {
+    WeightClusterSummary summary;
+
+    if (cluster.empty()) {
+        return summary;
+    }
+
+    summary.count = cluster.size();
+
+    Eigen::Vector2f centroid = Eigen::Vector2f::Zero();
+    float range = 0.0;
+    for (const auto &point : cluster) {
+        centroid += point.position;
+        range += point.range;
+    }
+
+    centroid /= (float)cluster.size();
+    range /= (float)cluster.size();
+
+    summary.centroid = centroid;
+    summary.range = range;
+
+    float min_x = INFINITY;
+    float max_x = -INFINITY;
+    float min_y = INFINITY;
+    float max_y = -INFINITY;
+
+    float sum_squared_distance = 0.0f;
+
+    for (const auto &point : cluster) {
+        const Eigen::Vector2f delta = point.position - centroid;
+
+        sum_squared_distance += delta.squaredNorm();
+
+        min_x = std::min(min_x, point.position.x());
+        max_x = std::max(max_x, point.position.x());
+        min_y = std::min(min_y, point.position.y());
+        max_y = std::max(max_y, point.position.y());
+    }
+
+    summary.spread = std::sqrt(sum_squared_distance / (float)cluster.size());
+
+    summary.max_extent = std::max(max_x - min_x, max_y - min_y);
+
+    summary.diameter_mm = summary.max_extent * 1000.0f;
+
+    const float minor_extent = std::min(max_x - min_x, max_y - min_y);
+    summary.aspect_ratio = minor_extent > 1e-3f ? (summary.max_extent / minor_extent) : 1.0f;
+
+    if (summary.count < WEIGHT_TARGET_MIN_CLUSTER_COUNT ||
+        summary.count > WEIGHT_TARGET_MAX_CLUSTER_COUNT) {
+        summary.score = 0.0f;
+        return summary;
+    }
+
+    if (summary.diameter_mm < WEIGHT_TARGET_MIN_DIAMETER_MM ||
+        summary.diameter_mm > WEIGHT_TARGET_MAX_DIAMETER_MM) {
+        summary.score = 0.0f;
+        return summary;
+    }
+
+    if (summary.aspect_ratio > WEIGHT_TARGET_MAX_ASPECT_RATIO) {
+        summary.score = 0.0f;
+        return summary;
+    }
+
+    const float size_score =
+        1.0f - std::clamp(std::fabs(summary.diameter_mm - WEIGHT_TARGET_DESIRED_DIAMETER_MM) /
+                              WEIGHT_TARGET_DIAMETER_DEVIATION_MM,
+                          0.0f, 1.0f);
+
+    const float compact_score = std::clamp(
+        1.0f - (summary.spread / std::max(summary.max_extent, WEIGHT_TARGET_MIN_CLUSTER_SPREAD)),
+        0.0f, 1.0f);
+
+    const float shape_score = std::clamp(
+        1.0f - (summary.aspect_ratio - 1.0f) / WEIGHT_TARGET_SHAPE_SCORE_SCALE, 0.0f, 1.0f);
+
+    summary.score = 0.45f * size_score + 0.35f * compact_score + 0.20f * shape_score;
+
+    return summary;
+}
+
 WeightDetectionTask::WeightDetectionTask() : SchedulerTask("weight_detection") {}
+
+WeightDetectionTask::WeightDetectionTask(LidarProcessingTask *lidar_processing_task)
+    : SchedulerTask("weight_detection"), lidar_processing_task(lidar_processing_task) {}
 
 void WeightDetectionTask::setup() {
     if (!expander.begin(0x3E)) {
@@ -35,6 +140,89 @@ uint16_t readPins() {
     return msb | lsb;
 }
 
+void WeightDetectionTask::update_weight_target() {
+    this->current_weight_target = WeightTarget{};
+
+    auto clear_weight_target_telemetry = []() {
+        telemetry::publish_f32(telemetry::KEY_WEIGHT_TARGET_X,
+                               std::numeric_limits<float>::quiet_NaN());
+        telemetry::publish_f32(telemetry::KEY_WEIGHT_TARGET_Y,
+                               std::numeric_limits<float>::quiet_NaN());
+        telemetry::publish_f32(telemetry::KEY_WEIGHT_TARGET_CONFIDENCE,
+                               std::numeric_limits<float>::quiet_NaN());
+        telemetry::publish_f32(telemetry::KEY_WEIGHT_SPREAD,
+                               std::numeric_limits<float>::quiet_NaN());
+        telemetry::publish_f32(telemetry::KEY_WEIGHT_EXTENT,
+                               std::numeric_limits<float>::quiet_NaN());
+        telemetry::publish_f32(telemetry::KEY_WEIGHT_DIAMETER,
+                               std::numeric_limits<float>::quiet_NaN());
+        telemetry::publish_f32(telemetry::KEY_WEIGHT_ASPECT,
+                               std::numeric_limits<float>::quiet_NaN());
+        telemetry::publish_f32(telemetry::KEY_WEIGHT_RANGE,
+                               std::numeric_limits<float>::quiet_NaN());
+    };
+
+    if (this->lidar_processing_task == nullptr || !this->lidar_processing_task->has_result()) {
+        clear_weight_target_telemetry();
+        return;
+    }
+
+    const auto &result = this->lidar_processing_task->get_last_result();
+    if (result.clusters.empty() || result.transformed_points.empty()) {
+        clear_weight_target_telemetry();
+        return;
+    }
+
+    WeightClusterSummary best_summary{};
+    float best_score = -1.0f;
+
+    for (const auto &cluster : result.clusters) {
+        if (cluster.count < 4 || cluster.start + cluster.count > result.transformed_points.size()) {
+            continue;
+        }
+
+        std::span<const LidarResponsePoint> cluster_points(
+            result.transformed_points.data() + cluster.start, cluster.count);
+        auto summary = summarize_weight_cluster(cluster_points);
+
+        if (summary.score > best_score) {
+            best_score = summary.score;
+            best_summary = summary;
+        }
+    }
+
+    if (best_score <= WEIGHT_TARGET_MIN_SCORE) {
+        clear_weight_target_telemetry();
+        return;
+    }
+
+    this->current_weight_target.position = best_summary.centroid;
+    this->current_weight_target.confidence = best_score;
+    this->current_weight_target.valid = true;
+
+    telemetry::publish_f32(telemetry::KEY_WEIGHT_TARGET_X,
+                           this->current_weight_target.position.x());
+    telemetry::publish_f32(telemetry::KEY_WEIGHT_TARGET_Y,
+                           this->current_weight_target.position.y());
+    telemetry::publish_f32(telemetry::KEY_WEIGHT_TARGET_CONFIDENCE,
+                           this->current_weight_target.confidence);
+    telemetry::publish_f32(telemetry::KEY_WEIGHT_SPREAD, best_summary.spread);
+    telemetry::publish_f32(telemetry::KEY_WEIGHT_EXTENT, best_summary.max_extent);
+    telemetry::publish_f32(telemetry::KEY_WEIGHT_DIAMETER, best_summary.diameter_mm);
+    telemetry::publish_f32(telemetry::KEY_WEIGHT_ASPECT, best_summary.aspect_ratio);
+    telemetry::publish_f32(telemetry::KEY_WEIGHT_RANGE, best_summary.range);
+}
+
+bool WeightDetectionTask::has_weight_target() const { return this->current_weight_target.valid; }
+
+Eigen::Vector2f WeightDetectionTask::get_weight_target_position() const {
+    return this->current_weight_target.position;
+}
+
+float WeightDetectionTask::get_weight_target_confidence() const {
+    return this->current_weight_target.confidence;
+}
+
 void WeightDetectionTask::loop() {
     uint16_t pins = readPins();
 
@@ -66,4 +254,6 @@ void WeightDetectionTask::loop() {
         }
         break;
     }
+
+    update_weight_target();
 }

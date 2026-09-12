@@ -47,6 +47,17 @@ static const float LIDAR_MAX_DISTANCE = 12.0;
 static const int ENTRY_CONDUCTION_PIN = 0;
 static const int ENTRY_SWITCH_PIN = 1;
 
+static const float WEIGHT_TARGET_MIN_DIAMETER_MM = 20.0f;
+static const float WEIGHT_TARGET_MAX_DIAMETER_MM = 150.0f;
+static const float WEIGHT_TARGET_MIN_CLUSTER_COUNT = 4.0f;
+static const float WEIGHT_TARGET_MAX_CLUSTER_COUNT = 40.0f;
+static const float WEIGHT_TARGET_MIN_SCORE = 0.35f;
+static const float WEIGHT_TARGET_MAX_ASPECT_RATIO = 2.5f;
+static const float WEIGHT_TARGET_DESIRED_DIAMETER_MM = 50.0f;
+static const float WEIGHT_TARGET_DIAMETER_DEVIATION_MM = 70.0f;
+static const float WEIGHT_TARGET_MIN_CLUSTER_SPREAD = 0.03f;
+static const float WEIGHT_TARGET_SHAPE_SCORE_SCALE = 1.5f;
+
 //
 // Software
 //
@@ -76,6 +87,6 @@ static const int MIN_POINTS_PER_OBJECT = 5;
 
 static const int MAX_LIDAR_POINTS = 512;
 
-static const bool ENABLE_TASK_LOGGING = true;
+static const bool ENABLE_TASK_LOGGING = false;
 
 static const int WEIGHT_DETECTION_DEBOUNCE_MS = 8;

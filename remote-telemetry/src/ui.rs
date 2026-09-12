@@ -9,7 +9,9 @@ use crate::{
         COMMAND_HEADER, CommandPacket, KEY_DRIVE_ERROR, KEY_HEADING, KEY_LEFT_COMMAND,
         KEY_LEFT_WHEEL_VELOCITY, KEY_LOOKAHEAD_X, KEY_LOOKAHEAD_Y, KEY_NEXTPOINT_X,
         KEY_NEXTPOINT_Y, KEY_PITCH, KEY_POSITION_UNCERTAINTY, KEY_POSITION_X, KEY_POSITION_Y,
-        KEY_RIGHT_COMMAND, KEY_RIGHT_WHEEL_VELOCITY, KEY_TURN_ERROR, VALUE_TYPE_FLOAT32,
+        KEY_RIGHT_COMMAND, KEY_RIGHT_WHEEL_VELOCITY, KEY_TURN_ERROR, KEY_WEIGHT_ASPECT,
+        KEY_WEIGHT_CONFIDENCE, KEY_WEIGHT_DIAMETER, KEY_WEIGHT_EXTENT, KEY_WEIGHT_RANGE,
+        KEY_WEIGHT_SPREAD, KEY_WEIGHT_TARGET_X, KEY_WEIGHT_TARGET_Y, VALUE_TYPE_FLOAT32,
     },
     telemetry_state::{TELEMETRY, TypedValue},
 };
@@ -80,7 +82,10 @@ fn update_slider_value(
 
 fn value_as_f32(value: Option<&TypedValue>) -> Option<f32> {
     match value {
-        Some(v) if v.value_type == VALUE_TYPE_FLOAT32 => Some(f32::from_bits(v.payload)),
+        Some(v) if v.value_type == VALUE_TYPE_FLOAT32 => {
+            let value = f32::from_bits(v.payload);
+            value.is_finite().then_some(value)
+        }
         _ => None,
     }
 }
@@ -349,13 +354,85 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
             let lookahead_x = value_as_f32(telemetry.values.get(&KEY_LOOKAHEAD_X)).unwrap_or(0.0);
             let lookahead_y = value_as_f32(telemetry.values.get(&KEY_LOOKAHEAD_Y)).unwrap_or(0.0);
 
-            d.draw_text(
-                format!("Num Points: {}", telemetry.lidar_points.len()).as_str(),
-                20,
-                200,
-                20,
-                Color::BLACK,
-            );
+            let weight_target_x = value_as_f32(telemetry.values.get(&KEY_WEIGHT_TARGET_X));
+            let weight_target_y = value_as_f32(telemetry.values.get(&KEY_WEIGHT_TARGET_Y));
+
+            let weight_target_confidence =
+                value_as_f32(telemetry.values.get(&KEY_WEIGHT_CONFIDENCE));
+
+            let weight_target_spread = value_as_f32(telemetry.values.get(&KEY_WEIGHT_SPREAD));
+            let weight_target_extent = value_as_f32(telemetry.values.get(&KEY_WEIGHT_EXTENT));
+            let weight_target_diameter = value_as_f32(telemetry.values.get(&KEY_WEIGHT_DIAMETER));
+            let weight_target_aspect = value_as_f32(telemetry.values.get(&KEY_WEIGHT_ASPECT));
+            let weight_target_range = value_as_f32(telemetry.values.get(&KEY_WEIGHT_RANGE));
+
+            if let (
+                Some(weight_target_x),
+                Some(weight_target_y),
+                Some(weight_target_confidence),
+                Some(weight_target_spread),
+                Some(weight_target_extent),
+                Some(weight_target_diameter),
+                Some(weight_target_aspect),
+                Some(weight_target_range),
+            ) = (
+                weight_target_x,
+                weight_target_y,
+                weight_target_confidence,
+                weight_target_spread,
+                weight_target_extent,
+                weight_target_diameter,
+                weight_target_aspect,
+                weight_target_range,
+            ) {
+                let weight_target_screen = world_to_screen(weight_target_x, weight_target_y);
+                d.draw_circle_v(weight_target_screen, 6.0, Color::PURPLE);
+                d.draw_circle_lines_v(weight_target_screen, 12.0, Color::PURPLE);
+
+                d.draw_text(
+                    format!("Weight Confidence: {}", weight_target_confidence).as_str(),
+                    20,
+                    220,
+                    20,
+                    Color::BLACK,
+                );
+                d.draw_text(
+                    format!("Weight spread: {}", weight_target_spread).as_str(),
+                    20,
+                    240,
+                    20,
+                    Color::BLACK,
+                );
+                d.draw_text(
+                    format!("Weight extent: {}", weight_target_extent).as_str(),
+                    20,
+                    260,
+                    20,
+                    Color::BLACK,
+                );
+                d.draw_text(
+                    format!("Weight diameter: {}", weight_target_diameter).as_str(),
+                    20,
+                    280,
+                    20,
+                    Color::BLACK,
+                );
+                d.draw_text(
+                    format!("Weight aspect: {}", weight_target_aspect).as_str(),
+                    20,
+                    300,
+                    20,
+                    Color::BLACK,
+                );
+
+                d.draw_text(
+                    format!("Weight range: {}", weight_target_range).as_str(),
+                    20,
+                    320,
+                    20,
+                    Color::BLACK,
+                );
+            }
 
             for point in telemetry.lidar_points {
                 let lidar_x_world_m = point.x_mm as f32 / 1000.0;

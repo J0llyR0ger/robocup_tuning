@@ -15,14 +15,15 @@ void LidarProcessingTask::loop() {
 
     LidarProcessing processing;
 
-    auto result = processing.process_points(points, pose);
+    this->last_result = processing.process_points(points, pose);
+    this->has_last_result = true;
 
-    telemetry::publish_lidar_points(result.transformed_points);
-    telemetry::publish_lidar_processing(result);
+    telemetry::publish_lidar_points(this->last_result.transformed_points);
+    telemetry::publish_lidar_processing(this->last_result);
+}
 
-    // if (now >= next_lidar_telemetry_publish) {
-    //     LidarProcessing processing;
+bool LidarProcessingTask::has_result() const { return this->has_last_result; }
 
-    //     next_lidar_telemetry_publish = now + LIDAR_TELEMETRY_PERIOD_MICROS;
-    // }
+const LidarProcessingResult &LidarProcessingTask::get_last_result() const {
+    return this->last_result;
 }

@@ -35,6 +35,7 @@ using ClusterList = etl::vector<PointSpan, MAX_LIDAR_POINTS>;
 struct LidarProcessingResult {
     etl::vector<LineFit, MAX_LIDAR_POINTS> line_segments;
     etl::vector<CircleFit, MAX_LIDAR_POINTS> circles;
+    ClusterList clusters;
     etl::vector<LidarResponsePoint, MAX_LIDAR_POINTS> transformed_points;
 };
 

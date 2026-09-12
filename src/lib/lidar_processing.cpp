@@ -159,6 +159,7 @@ LidarProcessingResult LidarProcessing::process_points(std::span<LidarResponsePoi
     ClusterList coarse_clusters = get_coarse_clusters(points);
 
     auto result = fit_clusters(coarse_clusters, points);
+    result.clusters = coarse_clusters;
     result.transformed_points = points;
 
     return result;
