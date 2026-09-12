@@ -6,8 +6,11 @@
 #include <cmath>
 
 float score_metric(float value, const WeightScoreMetricTuning &metric) {
-    const float safe_deviation = std::max(metric.deviation, 1e-4f);
-    return std::clamp(1.0f - std::fabs(value - metric.desired) / safe_deviation, 0.0f, 1.0f);
+    const float safe_stddev = std::max(metric.deviation, 1e-4f);
+    const float z_score = (value - metric.desired) / safe_stddev;
+
+    // Normal-distribution likelihood with peak 1.0 at desired value.
+    return std::exp(-0.5f * z_score * z_score);
 }
 
 float score_cluster_for_weight_target(const Cluster &cluster) {

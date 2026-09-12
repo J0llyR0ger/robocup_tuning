@@ -41,20 +41,20 @@ static constexpr int WEIGHT_TARGET_MIN_CLUSTER_COUNT = 4;
 static constexpr int WEIGHT_TARGET_MAX_CLUSTER_COUNT = 120;
 static constexpr WeightRangeTuning WEIGHT_TARGET_RANGE_TUNING = {
     .near_range_m = 0.05f,
-    .far_range_m = 0.63f,
+    .far_range_m = 0.95f,
     .near_profile =
         {
-            .spread = {.desired = 0.01f, .deviation = 0.005f, .weight = 0.30f},
-            .extent = {.desired = 0.034f, .deviation = 0.010f, .weight = 0.20f},
-            .diameter_mm = {.desired = 30.0f, .deviation = 15.0f, .weight = 1.0f},
-            .aspect_ratio = {.desired = 1.5f, .deviation = 1.0f, .weight = 0.15f},
+            .spread = {.desired = 0.0061f, .deviation = 0.0018f, .weight = 0.30f},
+            .extent = {.desired = 0.0168f, .deviation = 0.005f, .weight = 0.20f},
+            .diameter_mm = {.desired = 16.8f, .deviation = 5.12f, .weight = 0.6f},
+            .aspect_ratio = {.desired = 1.5f, .deviation = 0.4f, .weight = 0.15f},
         },
     .far_profile =
         {
-            .spread = {.desired = 0.015f, .deviation = 0.01f, .weight = 0.30f},
+            .spread = {.desired = 0.0131f, .deviation = 0.0035f, .weight = 0.30f},
             .extent = {.desired = 0.03f, .deviation = 0.01f, .weight = 0.20f},
-            .diameter_mm = {.desired = 30.0f, .deviation = 10.0f, .weight = 1.0f},
-            .aspect_ratio = {.desired = 1.15f, .deviation = 0.5f, .weight = 0.15f},
+            .diameter_mm = {.desired = 26.8f, .deviation = 7.6f, .weight = 0.6f},
+            .aspect_ratio = {.desired = 1.5f, .deviation = 0.5f, .weight = 0.15f},
         },
 };
 
