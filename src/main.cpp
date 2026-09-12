@@ -27,7 +27,7 @@ static LidarProcessingTask lidar_processing_task =
 static IntakeTask intake_task = IntakeTask();
 static TelemetryTask telemetry_task = TelemetryTask();
 static UserCommandTask user_command_task = UserCommandTask(&drive_train_task);
-static WeightDetectionTask weight_detection_task = WeightDetectionTask(&lidar_processing_task);
+static WeightDetectionTask weight_detection_task = WeightDetectionTask();
 
 const size_t NUM_TASKS = 11;
 
