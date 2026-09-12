@@ -55,6 +55,7 @@ pub struct LidarPoint {
     pub flags: u8,
 }
 
+#[repr(C)]
 #[derive(Copy, Clone, Debug, FromBytes, KnownLayout, Immutable)]
 pub struct LineFit {
     pub x1: f32,
@@ -66,19 +67,24 @@ pub struct LineFit {
     pub intercept: f32,
 }
 
+#[repr(C)]
 #[derive(Copy, Clone, Debug, FromBytes, KnownLayout, Immutable)]
-pub struct CircleFit {
-    pub cx: f32,
-    pub cy: f32,
-    pub r: f32,
-
-    pub radius_deviation: f32,
+pub struct Cluster {
+    pub start: u16,
+    pub count: u16,
+    pub centroid_x: f32,
+    pub centroid_y: f32,
+    pub range: f32,
+    pub spread: f32,
+    pub max_extent: f32,
+    pub diameter_mm: f32,
+    pub aspect_ratio: f32,
 }
 
 #[derive(Clone, Debug)]
 pub struct LidarProcessing {
     pub line_fits: Vec<LineFit>,
-    pub circle_fits: Vec<CircleFit>,
+    pub clusters: Vec<Cluster>,
 }
 
 #[derive(Clone, Debug)]
@@ -162,42 +168,63 @@ pub fn parse_frame(frame_type: u8, payload: &[u8]) -> Option<TelemetryFrame> {
         }
         FRAME_TYPE_LIDAR_PROCESSING => {
             const LINE_SIZE: usize = size_of::<LineFit>();
+            const EXPECTED_LINE_SIZE: usize = 24;
+            if LINE_SIZE != EXPECTED_LINE_SIZE {
+                return None;
+            }
+
+            if payload.len() < 2 {
+                return None;
+            }
 
             let lines_count = u16::from_le_bytes([payload[0], payload[1]]) as usize;
-            let lines_body = &payload[2..2 + lines_count * LINE_SIZE];
+            let lines_body_len = lines_count * LINE_SIZE;
+
+            if payload.len() < 2 + lines_body_len + 2 {
+                return None;
+            }
+
+            let lines_body = &payload[2..2 + lines_body_len];
 
             let mut lines = Vec::with_capacity(lines_count);
 
             for i in 0..lines_count {
                 let data =
                     LineFit::read_from_bytes(&lines_body[i * LINE_SIZE..i * LINE_SIZE + LINE_SIZE])
-                        .unwrap();
+                        .ok()?;
 
                 lines.push(data);
             }
 
-            const CIRCLE_SIZE: usize = size_of::<CircleFit>();
+            const CLUSTER_SIZE: usize = size_of::<Cluster>();
+            const EXPECTED_CLUSTER_SIZE: usize = 32;
+            if CLUSTER_SIZE != EXPECTED_CLUSTER_SIZE {
+                return None;
+            }
 
-            let circles_count = u16::from_le_bytes([
-                payload[2 + lines_count * LINE_SIZE],
-                payload[2 + lines_count * LINE_SIZE + 1],
-            ]) as usize;
-            let circles_body = &payload[4 + lines_count * LINE_SIZE..];
+            let clusters_count =
+                u16::from_le_bytes([payload[2 + lines_body_len], payload[3 + lines_body_len]])
+                    as usize;
+            let clusters_body = &payload[4 + lines_body_len..];
 
-            let mut circles = Vec::with_capacity(circles_count);
+            if clusters_body.len() < clusters_count * CLUSTER_SIZE {
+                return None;
+            }
 
-            for i in 0..circles_count {
-                let data = CircleFit::read_from_bytes(
-                    &circles_body[i * CIRCLE_SIZE..(i + 1) * CIRCLE_SIZE],
+            let mut clusters = Vec::with_capacity(clusters_count);
+
+            for i in 0..clusters_count {
+                let data = Cluster::read_from_bytes(
+                    &clusters_body[i * CLUSTER_SIZE..(i + 1) * CLUSTER_SIZE],
                 )
-                .unwrap();
+                .ok()?;
 
-                circles.push(data);
+                clusters.push(data);
             }
 
             Some(TelemetryFrame::LidarProcessing(LidarProcessing {
                 line_fits: lines,
-                circle_fits: circles,
+                clusters,
             }))
         }
         FRAME_TYPE_OCCUPANCY_GRID => {

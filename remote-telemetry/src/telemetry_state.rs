@@ -26,7 +26,7 @@ impl TelemetrySnapshot {
             lidar_points: Vec::new(),
             lidar_processing: LidarProcessing {
                 line_fits: vec![],
-                circle_fits: vec![],
+                clusters: vec![],
             },
             occupancy_grid: None,
         }

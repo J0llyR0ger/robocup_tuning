@@ -6,7 +6,7 @@ use zerocopy::IntoBytes;
 use crate::{
     data_source::CommandSink,
     protocol::{
-        COMMAND_HEADER, CommandPacket, KEY_DRIVE_ERROR, KEY_HEADING, KEY_LEFT_COMMAND,
+        COMMAND_HEADER, Cluster, CommandPacket, KEY_DRIVE_ERROR, KEY_HEADING, KEY_LEFT_COMMAND,
         KEY_LEFT_WHEEL_VELOCITY, KEY_LOOKAHEAD_X, KEY_LOOKAHEAD_Y, KEY_NEXTPOINT_X,
         KEY_NEXTPOINT_Y, KEY_PITCH, KEY_POSITION_UNCERTAINTY, KEY_POSITION_X, KEY_POSITION_Y,
         KEY_RIGHT_COMMAND, KEY_RIGHT_WHEEL_VELOCITY, KEY_TURN_ERROR, KEY_WEIGHT_ASPECT,
@@ -31,6 +31,90 @@ const SLIDER_GAP_PX: f32 = 26.0;
 enum CenterMode {
     RobotOffset,
     MapCenter,
+}
+
+#[derive(Copy, Clone, Default)]
+struct RunningStats {
+    samples: u32,
+    mean: f64,
+    m2: f64,
+}
+
+impl RunningStats {
+    fn update(&mut self, value: f32) {
+        self.samples += 1;
+
+        let value = value as f64;
+        let delta = value - self.mean;
+        self.mean += delta / self.samples as f64;
+        let delta2 = value - self.mean;
+        self.m2 += delta * delta2;
+    }
+
+    fn mean(&self) -> f32 {
+        self.mean as f32
+    }
+
+    fn stddev(&self) -> f32 {
+        if self.samples <= 1 {
+            0.0
+        } else {
+            (self.m2 / (self.samples as f64 - 1.0)).sqrt() as f32
+        }
+    }
+}
+
+#[derive(Copy, Clone, Default)]
+struct ClusterStatsSummary {
+    spread: RunningStats,
+    extent: RunningStats,
+    diameter_mm: RunningStats,
+    aspect_ratio: RunningStats,
+    range: RunningStats,
+    point_count: RunningStats,
+}
+
+impl ClusterStatsSummary {
+    fn update(&mut self, cluster: Cluster) {
+        self.spread.update(cluster.spread);
+        self.extent.update(cluster.max_extent);
+        self.diameter_mm.update(cluster.diameter_mm);
+        self.aspect_ratio.update(cluster.aspect_ratio);
+        self.range.update(cluster.range);
+        self.point_count.update(cluster.count as f32);
+    }
+}
+
+#[derive(Copy, Clone)]
+struct TrackingCircle {
+    center_world: Vector2,
+    radius_m: f32,
+    matched_frames: u32,
+    missed_frames: u32,
+    stats: ClusterStatsSummary,
+}
+
+impl TrackingCircle {
+    fn new(center_world: Vector2, radius_m: f32) -> Self {
+        Self {
+            center_world,
+            radius_m,
+            matched_frames: 0,
+            missed_frames: 0,
+            stats: ClusterStatsSummary::default(),
+        }
+    }
+
+    fn observe_cluster(&mut self, cluster: Cluster) {
+        self.matched_frames += 1;
+        self.stats.update(cluster);
+    }
+}
+
+#[derive(Copy, Clone)]
+struct HoverCluster {
+    cluster: Cluster,
+    radius_m: f32,
 }
 
 fn point_in_rect(point: Vector2, rect: Rectangle) -> bool {
@@ -106,6 +190,7 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
     let mut map_center_x_slider = FIELD_WIDTH_X_METERS * 0.5;
     let mut map_center_y_slider = FIELD_HEIGHT_Y_METERS * 0.5;
     let mut prev_mouse_down = false;
+    let mut tracking_circle: Option<TrackingCircle> = None;
 
     while !rl.window_should_close() {
         let mut y = 0;
@@ -150,7 +235,9 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
         let mouse_pos = rl.get_mouse_position();
         let mouse_down = rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT);
         let mouse_pressed = mouse_down && !prev_mouse_down;
+        let right_mouse_pressed = rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_RIGHT);
         let toggle_pressed = rl.is_key_pressed(KeyboardKey::KEY_T);
+        let clear_tracker_pressed = rl.is_key_pressed(KeyboardKey::KEY_BACKSPACE);
         prev_mouse_down = mouse_down;
 
         let mut d = rl.begin_drawing(&thread);
@@ -282,6 +369,22 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
             )
         };
 
+        let screen_to_world = |screen: Vector2| -> Vector2 {
+            Vector2::new(
+                map_center_x + (screen.x - screen_center_x) / pixels_per_meter,
+                map_center_y - (screen.y - screen_center_y) / pixels_per_meter,
+            )
+        };
+
+        if clear_tracker_pressed {
+            tracking_circle = None;
+        }
+
+        if right_mouse_pressed {
+            let center_world = screen_to_world(mouse_pos);
+            tracking_circle = Some(TrackingCircle::new(center_world, 0.05));
+        }
+
         let bl = world_to_screen(0.0, 0.0);
         let br = world_to_screen(FIELD_WIDTH_X_METERS, 0.0);
         let tr = world_to_screen(FIELD_WIDTH_X_METERS, FIELD_HEIGHT_Y_METERS);
@@ -331,6 +434,12 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
         }
 
         if !telemetry.values.is_empty() || !telemetry.lidar_points.is_empty() {
+            let mut hovered_cluster: Option<HoverCluster> = None;
+            let mut hovered_distance_px = f32::INFINITY;
+
+            let mut nearest_tracking_cluster: Option<Cluster> = None;
+            let mut nearest_tracking_distance_m = f32::INFINITY;
+
             let heading = value_as_f32(telemetry.values.get(&KEY_HEADING)).unwrap_or(0.0);
             let pitch = value_as_f32(telemetry.values.get(&KEY_PITCH)).unwrap_or(0.0);
             let left_wheel_velocity =
@@ -466,19 +575,204 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
                 d.draw_line_ex(start_screen, end_screen, 2.0, Color::GREEN);
             }
 
-            for circle in telemetry.lidar_processing.circle_fits {
-                let c_screen = world_to_screen(circle.cx, circle.cy);
+            for cluster in telemetry.lidar_processing.clusters.iter().copied() {
+                let c_screen = world_to_screen(cluster.centroid_x, cluster.centroid_y);
+                let radius_m = (cluster.diameter_mm.max(0.0) / 1000.0) * 0.5;
 
-                d.draw_circle_v(c_screen, circle.r * pixels_per_meter, Color::GREEN);
-                d.draw_circle_v(c_screen, circle.r * pixels_per_meter - 5.0, Color::WHITE);
+                if radius_m >= 0.05 {
+                    continue;
+                }
 
+                let dx_px = c_screen.x - mouse_pos.x;
+                let dy_px = c_screen.y - mouse_pos.y;
+                let mouse_distance_px = (dx_px * dx_px + dy_px * dy_px).sqrt();
+
+                let radius_px = (radius_m * pixels_per_meter).max(2.0);
+
+                d.draw_circle_lines_v(c_screen, radius_px, Color::GREEN);
+
+                if mouse_distance_px <= radius_px.max(6.0)
+                    && mouse_distance_px < hovered_distance_px
+                {
+                    hovered_distance_px = mouse_distance_px;
+                    hovered_cluster = Some(HoverCluster { cluster, radius_m });
+                }
+
+                if let Some(tracker) = tracking_circle {
+                    let dx_m = cluster.centroid_x - tracker.center_world.x;
+                    let dy_m = cluster.centroid_y - tracker.center_world.y;
+                    let centroid_distance_m = (dx_m * dx_m + dy_m * dy_m).sqrt();
+
+                    if centroid_distance_m <= tracker.radius_m
+                        && centroid_distance_m < nearest_tracking_distance_m
+                    {
+                        nearest_tracking_distance_m = centroid_distance_m;
+                        nearest_tracking_cluster = Some(cluster);
+                    }
+                }
+            }
+
+            if let Some(tracker) = tracking_circle.as_mut() {
+                if let Some(cluster) = nearest_tracking_cluster {
+                    tracker.observe_cluster(cluster);
+                } else {
+                    tracker.missed_frames += 1;
+                }
+
+                let tracker_screen =
+                    world_to_screen(tracker.center_world.x, tracker.center_world.y);
+                d.draw_circle_lines_v(
+                    tracker_screen,
+                    tracker.radius_m * pixels_per_meter,
+                    Color::MAGENTA,
+                );
+                d.draw_circle_v(tracker_screen, 3.0, Color::MAGENTA);
+            }
+
+            if let Some(hover) = hovered_cluster {
+                d.draw_text("Hover Cluster", 20, 360, 20, Color::DARKGREEN);
                 d.draw_text(
-                    format!("Radius: {}", circle.r).as_str(),
-                    c_screen.x as i32,
-                    c_screen.y as i32,
+                    format!("count: {}", hover.cluster.count).as_str(),
                     20,
+                    380,
+                    18,
                     Color::BLACK,
-                )
+                );
+                d.draw_text(
+                    format!("range: {:.3}m", hover.cluster.range).as_str(),
+                    20,
+                    400,
+                    18,
+                    Color::BLACK,
+                );
+                d.draw_text(
+                    format!("spread: {:.4}m", hover.cluster.spread).as_str(),
+                    20,
+                    420,
+                    18,
+                    Color::BLACK,
+                );
+                d.draw_text(
+                    format!("extent: {:.4}m", hover.cluster.max_extent).as_str(),
+                    20,
+                    440,
+                    18,
+                    Color::BLACK,
+                );
+                d.draw_text(
+                    format!("diameter: {:.1}mm", hover.cluster.diameter_mm).as_str(),
+                    20,
+                    460,
+                    18,
+                    Color::BLACK,
+                );
+                d.draw_text(
+                    format!("aspect: {:.3}", hover.cluster.aspect_ratio).as_str(),
+                    20,
+                    480,
+                    18,
+                    Color::BLACK,
+                );
+                d.draw_text(
+                    format!("radius: {:.1}mm", hover.radius_m * 1000.0).as_str(),
+                    20,
+                    500,
+                    18,
+                    Color::BLACK,
+                );
+            }
+
+            if let Some(tracker) = tracking_circle {
+                d.draw_text(
+                    "Tracker (RMB place, Backspace clear)",
+                    20,
+                    530,
+                    20,
+                    Color::MAROON,
+                );
+                d.draw_text(
+                    format!(
+                        "samples: {}  missed: {}",
+                        tracker.stats.spread.samples, tracker.missed_frames
+                    )
+                    .as_str(),
+                    20,
+                    550,
+                    18,
+                    Color::BLACK,
+                );
+                d.draw_text(
+                    format!(
+                        "spread m/std: {:.4} / {:.4} m",
+                        tracker.stats.spread.mean(),
+                        tracker.stats.spread.stddev()
+                    )
+                    .as_str(),
+                    20,
+                    570,
+                    18,
+                    Color::BLACK,
+                );
+                d.draw_text(
+                    format!(
+                        "extent m/std: {:.4} / {:.4} m",
+                        tracker.stats.extent.mean(),
+                        tracker.stats.extent.stddev()
+                    )
+                    .as_str(),
+                    20,
+                    590,
+                    18,
+                    Color::BLACK,
+                );
+                d.draw_text(
+                    format!(
+                        "diameter m/std: {:.2} / {:.2} mm",
+                        tracker.stats.diameter_mm.mean(),
+                        tracker.stats.diameter_mm.stddev()
+                    )
+                    .as_str(),
+                    20,
+                    610,
+                    18,
+                    Color::BLACK,
+                );
+                d.draw_text(
+                    format!(
+                        "aspect m/std: {:.3} / {:.3}",
+                        tracker.stats.aspect_ratio.mean(),
+                        tracker.stats.aspect_ratio.stddev()
+                    )
+                    .as_str(),
+                    20,
+                    630,
+                    18,
+                    Color::BLACK,
+                );
+                d.draw_text(
+                    format!(
+                        "range m/std: {:.3} / {:.3} m",
+                        tracker.stats.range.mean(),
+                        tracker.stats.range.stddev()
+                    )
+                    .as_str(),
+                    20,
+                    650,
+                    18,
+                    Color::BLACK,
+                );
+                d.draw_text(
+                    format!(
+                        "count m/std: {:.2} / {:.2}",
+                        tracker.stats.point_count.mean(),
+                        tracker.stats.point_count.stddev()
+                    )
+                    .as_str(),
+                    20,
+                    670,
+                    18,
+                    Color::BLACK,
+                );
             }
 
             let robot_screen = world_to_screen(position_x, position_y);

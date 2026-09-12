@@ -174,49 +174,60 @@ void publish_lidar_points(std::span<LidarResponsePoint> points) {
     write_frame(FrameType::LidarPoints, payload, sizeof(count) + count * sizeof(LidarPointEntry));
 }
 
-struct TelemetryCircleFit {
-    float cx;
-    float cy;
-    float r;
-
-    float radius_deviation;
+struct __attribute__((packed)) TelemetryCluster {
+    uint16_t start;
+    uint16_t count;
+    float centroid_x;
+    float centroid_y;
+    float range;
+    float spread;
+    float max_extent;
+    float diameter_mm;
+    float aspect_ratio;
 };
 
 void publish_lidar_processing(LidarProcessingResult result) {
     uint16_t lines_count = result.line_segments.size();
     LineFit line_fits[MAX_LIDAR_POINTS] = {};
-    uint16_t circles_count = result.circles.size();
-    TelemetryCircleFit circle_fits[MAX_LIDAR_POINTS] = {};
+    uint16_t clusters_count = result.clusters.size();
+    TelemetryCluster clusters[MAX_LIDAR_POINTS] = {};
 
     for (int i = 0; i < result.line_segments.size(); i++) {
         line_fits[i] = result.line_segments[i];
     }
 
-    for (int i = 0; i < result.circles.size(); i++) {
-        circle_fits[i] = {
-            result.circles[i].xc,
-            result.circles[i].yc,
-            result.circles[i].r,
-            result.circles[i].radius_deviation,
+    for (int i = 0; i < result.clusters.size(); i++) {
+        const auto &cluster = result.clusters[i];
+
+        clusters[i] = {
+            .start = static_cast<uint16_t>(cluster.start),
+            .count = static_cast<uint16_t>(cluster.count),
+            .centroid_x = cluster.centroid.x(),
+            .centroid_y = cluster.centroid.y(),
+            .range = cluster.range,
+            .spread = cluster.spread,
+            .max_extent = cluster.max_extent,
+            .diameter_mm = cluster.diameter_mm,
+            .aspect_ratio = cluster.aspect_ratio,
         };
     }
 
     constexpr uint16_t MAX_PAYLOAD_LEN = sizeof(lines_count) + MAX_LIDAR_POINTS * sizeof(LineFit) +
-                                         sizeof(circles_count) +
-                                         MAX_LIDAR_POINTS * sizeof(TelemetryCircleFit);
+                                         sizeof(clusters_count) +
+                                         MAX_LIDAR_POINTS * sizeof(TelemetryCluster);
 
     uint8_t payload[MAX_PAYLOAD_LEN] = {0};
 
     memcpy(payload, &lines_count, sizeof(lines_count));
     memcpy(payload + sizeof(lines_count), line_fits, lines_count * sizeof(LineFit));
-    memcpy(payload + sizeof(lines_count) + lines_count * sizeof(LineFit), &circles_count,
-           sizeof(circles_count));
-    memcpy(payload + sizeof(lines_count) + lines_count * sizeof(LineFit) + sizeof(circles_count),
-           circle_fits, circles_count * sizeof(TelemetryCircleFit));
+    memcpy(payload + sizeof(lines_count) + lines_count * sizeof(LineFit), &clusters_count,
+           sizeof(clusters_count));
+    memcpy(payload + sizeof(lines_count) + lines_count * sizeof(LineFit) + sizeof(clusters_count),
+           clusters, clusters_count * sizeof(TelemetryCluster));
 
     write_frame(FrameType::LidarProcessing, payload,
-                sizeof(lines_count) + lines_count * sizeof(LineFit) + sizeof(circles_count) +
-                    circles_count * sizeof(TelemetryCircleFit));
+                sizeof(lines_count) + lines_count * sizeof(LineFit) + sizeof(clusters_count) +
+                    clusters_count * sizeof(TelemetryCluster));
 }
 
 void publish_occupancy_grid(const OccupancyGridMap &grid) {
