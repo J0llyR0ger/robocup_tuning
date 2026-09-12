@@ -13,18 +13,35 @@ static const float RADIANS_PER_TICK = 2.0 * PI / (float)TICKS_PER_REVOLUTION;
 
 static const float LEFT_SCALE = 0.75;
 
+static const float KICKOFF_VALUE = 0.2;
+
+static float apply_kickoff(float command) {
+    if (command == 0.0f) {
+        return 0.0f;
+    }
+
+    float magnitude = std::abs(command);
+    float remapped = KICKOFF_VALUE + (1.0f - KICKOFF_VALUE) * magnitude;
+
+    return command > 0.0f ? remapped : -remapped;
+}
+
 void DriveTrainTask::loop() {
     this->left_command = std::clamp(this->left_command, -1.0f, 1.0f);
     this->right_command = std::clamp(this->right_command, -1.0f, 1.0f);
 
     float left_out = this->left_command;
+    float right_out = this->right_command;
 
     if (left_out > 0.0) {
         left_out *= LEFT_SCALE;
     }
 
+    left_out = apply_kickoff(left_out);
+    right_out = apply_kickoff(right_out);
+
     left_motor.writeMicroseconds(map(left_out, 1.0, -1.0, FORWARD_MS, REVERSE_MS));
-    right_motor.writeMicroseconds(map(this->right_command, 1.0, -1.0, REVERSE_MS, FORWARD_MS));
+    right_motor.writeMicroseconds(map(right_out, 1.0, -1.0, REVERSE_MS, FORWARD_MS));
 
     telemetry::publish_f32(telemetry::KEY_LEFT_COMMAND, this->left_command);
     telemetry::publish_f32(telemetry::KEY_RIGHT_COMMAND, this->right_command);
