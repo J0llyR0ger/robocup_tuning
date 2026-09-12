@@ -4,7 +4,7 @@
 #define DRIVE_KP 35e-1
 #define DRIVE_KI 0 // 20e-4
 
-#define TURN_KP 0.5
+#define TURN_KP 1.0
 #define TURN_KI 0
 #define TURN_KD 0 // 6e-1
 
@@ -16,7 +16,7 @@ MotionControlTask::MotionControlTask(DriveTrainTask *drive_train_task,
                     .with_output_limits(-0.5, 0.5)
                     .with_integral_bounds(-100, 100)),
       pid_turn(PIDController(TURN_KP, TURN_KI, TURN_KD, 3 * DEG_TO_RAD)
-                   .with_output_limits(-2, 2)
+                   .with_output_limits(-1.0, 1.0)
                    .with_integral_bounds(-30 * DEG_TO_RAD, 30 * DEG_TO_RAD)) {}
 
 void MotionControlTask::setup() {}

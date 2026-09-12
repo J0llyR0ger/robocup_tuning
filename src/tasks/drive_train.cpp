@@ -11,11 +11,19 @@ void DriveTrainTask::setup() {
 
 static const float RADIANS_PER_TICK = 2.0 * PI / (float)TICKS_PER_REVOLUTION;
 
+static const float LEFT_SCALE = 0.75;
+
 void DriveTrainTask::loop() {
     this->left_command = std::clamp(this->left_command, -1.0f, 1.0f);
     this->right_command = std::clamp(this->right_command, -1.0f, 1.0f);
 
-    left_motor.writeMicroseconds(map(this->left_command, 1.0, -1.0, FORWARD_MS, REVERSE_MS));
+    float left_out = this->left_command;
+
+    if (left_out > 0.0) {
+        left_out *= LEFT_SCALE;
+    }
+
+    left_motor.writeMicroseconds(map(left_out, 1.0, -1.0, FORWARD_MS, REVERSE_MS));
     right_motor.writeMicroseconds(map(this->right_command, 1.0, -1.0, REVERSE_MS, FORWARD_MS));
 
     telemetry::publish_f32(telemetry::KEY_LEFT_COMMAND, this->left_command);
