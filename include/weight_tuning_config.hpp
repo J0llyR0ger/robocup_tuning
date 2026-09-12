@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cstdint>
 
 struct WeightScoreMetricTuning {
     float desired = 0.0f;
@@ -23,10 +24,23 @@ struct WeightRangeTuning {
     WeightScoreProfileTuning far_profile;
 };
 
+// Weight Tracking Tuning
+static constexpr float WEIGHT_TARGET_MIN_SCORE = 0.5f;
+static constexpr float WEIGHT_TARGET_MIN_TRACK_CANDIDATE_SCORE = 0.30f;
+
+static constexpr size_t WEIGHT_TARGET_MAX_TRACKS = 8;
+static constexpr float WEIGHT_TARGET_TRACK_ASSOCIATION_DISTANCE_M = 0.12f;
+static constexpr float WEIGHT_TARGET_TRACK_POSITION_ALPHA = 0.30f;
+static constexpr float WEIGHT_TARGET_TRACK_CONFIDENCE_GAIN = 0.12f;
+static constexpr float WEIGHT_TARGET_TRACK_INITIAL_CONFIDENCE_SCALE = 0.60f;
+static constexpr float WEIGHT_TARGET_TRACK_CONFIDENCE_DECAY = 0.04f;
+static constexpr float WEIGHT_TARGET_TRACK_FORGET_CONFIDENCE = 0.05f;
+static constexpr float WEIGHT_TARGET_TRACK_PUBLISH_CONFIDENCE = 0.60f;
+static constexpr uint16_t WEIGHT_TARGET_TRACK_MAX_MISSED_UPDATES = 20;
+
+// Cluster Identification Tuning
 static constexpr int WEIGHT_TARGET_MIN_CLUSTER_COUNT = 4;
 static constexpr int WEIGHT_TARGET_MAX_CLUSTER_COUNT = 120;
-static constexpr float WEIGHT_TARGET_MIN_SCORE = 0.5f;
-
 static constexpr WeightRangeTuning WEIGHT_TARGET_RANGE_TUNING = {
     .near_range_m = 0.05f,
     .far_range_m = 0.63f,
