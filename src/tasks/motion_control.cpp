@@ -4,23 +4,25 @@
 #define DRIVE_KP 35e-1
 #define DRIVE_KI 0 // 20e-4
 
-#define TURN_KP 1.0
+#define TURN_KP 0.5
 #define TURN_KI 0
-#define TURN_KD 6e-1
+#define TURN_KD 0 // 6e-1
 
 MotionControlTask::MotionControlTask(DriveTrainTask *drive_train_task,
                                      PositionTrackingTask *position_tracking_task)
     : SchedulerTask("motion_control"), drive_train_task(drive_train_task),
-      position_tracking_task(position_tracking_task), pure_pursuit(0.3),
+      position_tracking_task(position_tracking_task), pure_pursuit(0.6),
       pid_drive(PIDController(DRIVE_KP, DRIVE_KI, 0, 10)
-                    .with_output_limits(-1, 1)
+                    .with_output_limits(-0.5, 0.5)
                     .with_integral_bounds(-100, 100)),
       pid_turn(PIDController(TURN_KP, TURN_KI, TURN_KD, 3 * DEG_TO_RAD)
                    .with_output_limits(-2, 2)
                    .with_integral_bounds(-30 * DEG_TO_RAD, 30 * DEG_TO_RAD)) {}
 
-void MotionControlTask::setup() {
-    pure_pursuit.set_current_path({{0.4, 0.4}, {1.25, 0.4}, {1.25, 4}});
+void MotionControlTask::setup() {}
+
+void MotionControlTask::set_current_path(std::vector<Eigen::Vector2f> positions) {
+    this->pure_pursuit.set_current_path(positions);
 }
 
 void MotionControlTask::loop() {

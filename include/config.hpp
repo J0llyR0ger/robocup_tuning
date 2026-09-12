@@ -24,7 +24,7 @@ static const float LIDAR_ANGLE = 135.0;
 
 // This is applied before the rotation offset. Measured anticlockwise from X axis
 static const float LIDAR_START_ANGLE = 135.0;
-static const float LIDAR_END_ANGLE = 360.0;
+static const float LIDAR_END_ANGLE = 350.0;
 
 // Position Tracking
 static const float DRIVE_WIDTH_MM = 255.0;
@@ -33,9 +33,9 @@ static constexpr float FIELD_HEIGHT_Y_METERS = 4.85;
 
 static const float WHEEL_RADIUS_MM = 35.0 * (48.0 / 24.0);
 
-static const float INITIAL_X = 0.4;
-static const float INITIAL_Y = 0.4;
-static const float INITIAL_HEADING = 1.57079632679;
+static const float INITIAL_X = 1.2;
+static const float INITIAL_Y = 0.03;
+static const float INITIAL_HEADING = 0;
 
 // Sensor Properties
 static const float HEADING_NOISE_PER_RADIAN = 0.01;
@@ -60,6 +60,7 @@ static const int IMU_TASK_FREQ = 60;
 static const int LIDAR_PROCESSING_FREQ = 5;
 static const int WEIGHT_DETECTION_FREQ = 200;
 
+static const int AUTONOMOUS_COMMAND_TASK_FREQ = 60;
 static const int DRIVE_TRAIN_TASK_FREQ = 60;
 static const int INTAKE_TASK_FREQ = 20;
 static const int TELEMETRY_TASK_FREQ = 10;

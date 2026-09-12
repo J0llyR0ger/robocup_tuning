@@ -1,3 +1,4 @@
+#include "tasks/autonomous_command.hpp"
 #include "tasks/imu.hpp"
 #include "tasks/intake.hpp"
 #include "tasks/lidar.hpp"
@@ -11,25 +12,30 @@
 #include <Arduino.h>
 #include <memory>
 
+static ImuTask imu_task = ImuTask(&Wire);
 static LidarTask lidar_task = LidarTask();
 static DriveTrainTask drive_train_task = DriveTrainTask();
-static ImuTask imu_task = ImuTask(&Wire);
+
 static PositionTrackingTask position_tracking_task =
     PositionTrackingTask(&imu_task, &drive_train_task, &lidar_task);
+
+static LidarProcessingTask lidar_processing_task =
+    LidarProcessingTask(&lidar_task, &position_tracking_task);
+
 static MappingTask mapping_task = MappingTask(&position_tracking_task, &lidar_task);
 
 static MotionControlTask motion_control_task =
     MotionControlTask(&drive_train_task, &position_tracking_task);
-
-static LidarProcessingTask lidar_processing_task =
-    LidarProcessingTask(&lidar_task, &position_tracking_task);
 
 static IntakeTask intake_task = IntakeTask();
 static TelemetryTask telemetry_task = TelemetryTask();
 static UserCommandTask user_command_task = UserCommandTask(&drive_train_task);
 static WeightDetectionTask weight_detection_task = WeightDetectionTask();
 
-const size_t NUM_TASKS = 11;
+static AutonomousCommandTask autonomous_command_task = AutonomousCommandTask(
+    &lidar_processing_task, &position_tracking_task, &motion_control_task, &intake_task);
+
+const size_t NUM_TASKS = 12;
 
 std::array<SchedulerTask *, NUM_TASKS> tasks = {
     &lidar_task,
@@ -43,6 +49,7 @@ std::array<SchedulerTask *, NUM_TASKS> tasks = {
     &user_command_task,
     &lidar_processing_task,
     &weight_detection_task,
+    &autonomous_command_task,
 };
 std::array<uint32_t, NUM_TASKS> next_runs = {0};
 

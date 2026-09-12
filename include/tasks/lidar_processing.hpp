@@ -35,7 +35,6 @@ class LidarProcessingTask : public SchedulerTask {
     PositionTrackingTask *position_tracking_task;
     LidarProcessingResult last_result{};
     bool has_last_result = false;
-    WeightTarget current_weight_target;
     etl::vector<WeightTrackedTarget, WEIGHT_TARGET_MAX_TRACKS> tracked_targets;
 
     void update_weight_target();
@@ -48,9 +47,8 @@ class LidarProcessingTask : public SchedulerTask {
 
     bool has_result() const;
     const LidarProcessingResult &get_last_result() const;
-    bool has_weight_target() const;
-    Eigen::Vector2f get_weight_target_position() const;
-    float get_weight_target_confidence() const;
+
+    std::span<WeightTrackedTarget> get_tracked_weights();
 
     int get_frequency() const override { return LIDAR_PROCESSING_FREQ; }
 };

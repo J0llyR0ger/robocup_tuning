@@ -134,35 +134,11 @@ const LidarProcessingResult &LidarProcessingTask::get_last_result() const {
     return this->last_result;
 }
 
+std::span<WeightTrackedTarget> LidarProcessingTask::get_tracked_weights() {
+    return this->tracked_targets;
+}
+
 void LidarProcessingTask::update_weight_target() {
-    this->current_weight_target = WeightTarget{};
-
-    auto clear_weight_target_telemetry = []() {
-        telemetry::publish_f32(telemetry::KEY_WEIGHT_TARGET_X,
-                               std::numeric_limits<float>::quiet_NaN());
-        telemetry::publish_f32(telemetry::KEY_WEIGHT_TARGET_Y,
-                               std::numeric_limits<float>::quiet_NaN());
-        telemetry::publish_f32(telemetry::KEY_WEIGHT_TARGET_CONFIDENCE,
-                               std::numeric_limits<float>::quiet_NaN());
-        telemetry::publish_f32(telemetry::KEY_WEIGHT_SPREAD,
-                               std::numeric_limits<float>::quiet_NaN());
-        telemetry::publish_f32(telemetry::KEY_WEIGHT_EXTENT,
-                               std::numeric_limits<float>::quiet_NaN());
-        telemetry::publish_f32(telemetry::KEY_WEIGHT_DIAMETER,
-                               std::numeric_limits<float>::quiet_NaN());
-        telemetry::publish_f32(telemetry::KEY_WEIGHT_ASPECT,
-                               std::numeric_limits<float>::quiet_NaN());
-        telemetry::publish_f32(telemetry::KEY_WEIGHT_RANGE,
-                               std::numeric_limits<float>::quiet_NaN());
-        telemetry::publish_f32(telemetry::KEY_WEIGHT_POINT_COUNT,
-                               std::numeric_limits<float>::quiet_NaN());
-    };
-
-    if (this->last_result.clusters.empty() || this->last_result.transformed_points.empty()) {
-        clear_weight_target_telemetry();
-        return;
-    }
-
     for (auto &track : this->tracked_targets) {
         track.matched_this_update = false;
     }
@@ -245,53 +221,4 @@ void LidarProcessingTask::update_weight_target() {
             index++;
         }
     }
-
-    int best_track_index = -1;
-    float best_track_confidence = WEIGHT_TARGET_MIN_SCORE;
-
-    for (size_t track_index = 0; track_index < this->tracked_targets.size(); ++track_index) {
-        const auto &track = this->tracked_targets[track_index];
-        if (track.confidence < WEIGHT_TARGET_TRACK_PUBLISH_CONFIDENCE) {
-            continue;
-        }
-
-        if (track.confidence > best_track_confidence) {
-            best_track_confidence = track.confidence;
-            best_track_index = static_cast<int>(track_index);
-        }
-    }
-
-    if (best_track_index < 0) {
-        clear_weight_target_telemetry();
-        return;
-    }
-
-    const auto &best_track = this->tracked_targets[best_track_index];
-
-    this->current_weight_target.position = best_track.position;
-    this->current_weight_target.confidence = best_track.confidence;
-    this->current_weight_target.valid = true;
-
-    telemetry::publish_f32(telemetry::KEY_WEIGHT_TARGET_X,
-                           this->current_weight_target.position.x());
-    telemetry::publish_f32(telemetry::KEY_WEIGHT_TARGET_Y,
-                           this->current_weight_target.position.y());
-    telemetry::publish_f32(telemetry::KEY_WEIGHT_TARGET_CONFIDENCE,
-                           this->current_weight_target.confidence);
-    telemetry::publish_f32(telemetry::KEY_WEIGHT_SPREAD, best_track.spread);
-    telemetry::publish_f32(telemetry::KEY_WEIGHT_EXTENT, best_track.max_extent);
-    telemetry::publish_f32(telemetry::KEY_WEIGHT_DIAMETER, best_track.diameter_mm);
-    telemetry::publish_f32(telemetry::KEY_WEIGHT_ASPECT, best_track.aspect_ratio);
-    telemetry::publish_f32(telemetry::KEY_WEIGHT_RANGE, best_track.range);
-    telemetry::publish_f32(telemetry::KEY_WEIGHT_POINT_COUNT, (float)best_track.count);
-}
-
-bool LidarProcessingTask::has_weight_target() const { return this->current_weight_target.valid; }
-
-Eigen::Vector2f LidarProcessingTask::get_weight_target_position() const {
-    return this->current_weight_target.position;
-}
-
-float LidarProcessingTask::get_weight_target_confidence() const {
-    return this->current_weight_target.confidence;
 }

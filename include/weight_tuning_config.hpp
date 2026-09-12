@@ -25,7 +25,6 @@ struct WeightRangeTuning {
 };
 
 // Weight Tracking Tuning
-static constexpr float WEIGHT_TARGET_MIN_SCORE = 0.5f;
 static constexpr float WEIGHT_TARGET_MIN_TRACK_CANDIDATE_SCORE = 0.30f;
 
 static constexpr size_t WEIGHT_TARGET_MAX_TRACKS = 8;
@@ -35,7 +34,6 @@ static constexpr float WEIGHT_TARGET_TRACK_CONFIDENCE_GAIN = 0.12f;
 static constexpr float WEIGHT_TARGET_TRACK_INITIAL_CONFIDENCE_SCALE = 0.60f;
 static constexpr float WEIGHT_TARGET_TRACK_CONFIDENCE_DECAY = 0.04f;
 static constexpr float WEIGHT_TARGET_TRACK_FORGET_CONFIDENCE = 0.05f;
-static constexpr float WEIGHT_TARGET_TRACK_PUBLISH_CONFIDENCE = 0.40f;
 static constexpr uint16_t WEIGHT_TARGET_TRACK_MAX_MISSED_UPDATES = 20;
 
 // Cluster Identification Tuning

@@ -21,5 +21,7 @@ class IntakeTask : public SchedulerTask {
     void setup();
     void loop();
 
+    void set_position(bool up);
+
     int get_frequency() const override { return INTAKE_TASK_FREQ; }
 };

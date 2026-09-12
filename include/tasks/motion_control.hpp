@@ -24,5 +24,7 @@ class MotionControlTask : public SchedulerTask {
     void setup();
     void loop();
 
+    void set_current_path(std::vector<Eigen::Vector2f> positions);
+
     int get_frequency() const override { return MOTION_CONTROL_TASK_FREQ; }
 };
