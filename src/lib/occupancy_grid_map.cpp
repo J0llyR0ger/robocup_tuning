@@ -1,6 +1,7 @@
 #include "lib/occupancy_grid_map.hpp"
 #include <algorithm>
 #include <cmath>
+#include <wiring.h>
 
 namespace {
 
@@ -52,6 +53,17 @@ void OccupancyGridMap::update_from_lidar(const Pose &robot_pose,
     float heading_sin = sinf(heading);
     float heading_cos = cosf(heading);
 
+    // Lidar points from the Lidar Task are corrected to be relative to robot frame
+
+    // We must convert their position to world frame, and the origin must be the actual lidar
+    // location
+
+    Eigen::Vector2f lidar_origin_offset = {
+        heading_cos * LIDAR_OFFSEST_X + heading_sin * LIDAR_OFFSET_Y,
+        -heading_sin * LIDAR_OFFSEST_X + heading_cos * LIDAR_OFFSET_Y};
+
+    Eigen::Vector2f lidar_origin = robot_pose.position + lidar_origin_offset;
+
     for (const LidarResponsePoint &point : points) {
         if (point.range <= 0.01f) {
             continue;
@@ -63,7 +75,7 @@ void OccupancyGridMap::update_from_lidar(const Pose &robot_pose,
 
         Eigen::Vector2f hit_world = robot_pose.position + world_direction;
 
-        this->apply_beam(robot_pose.position, hit_world);
+        this->apply_beam(lidar_origin, hit_world);
     }
 }
 
