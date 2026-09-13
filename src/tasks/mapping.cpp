@@ -14,6 +14,8 @@ void MappingTask::loop() {
     Pose pose = this->position_tracking_task->get_current_pose();
     this->occupancy_grid.update_from_lidar(pose, this->lidar_task->get_points());
 
+    this->occupancy_graph = OccupancyGridGraph(this->occupancy_grid);
+
     uint32_t now_ms = millis();
     if (now_ms >= next_grid_publish_ms) {
         telemetry::publish_occupancy_grid(this->occupancy_grid);
