@@ -30,6 +30,8 @@ class IntakeTask : public SchedulerTask {
     WeightIntakeState weight_intake_state = WeightIntakeState::None;
 
   public:
+    int total_weights = 0;
+
     IntakeTask();
 
     void setup();

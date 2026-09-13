@@ -14,7 +14,9 @@ void AutonomousCommandTask::setup() {}
 void AutonomousCommandTask::loop() {
     auto robot_position = this->position_tracking_task->get_current_pose().position;
 
-    if (this->locked_weight_target.has_value()) {
+    if (this->intake_task->total_weights >= 4 && !this->locked_weight_target.has_value()) {
+        this->motion_control_task->set_current_path({robot_position, {0.5, 0.5}});
+    } else if (this->locked_weight_target.has_value()) {
         auto drive_target = this->locked_weight_target.value();
 
         this->motion_control_task->set_current_path({robot_position, drive_target});

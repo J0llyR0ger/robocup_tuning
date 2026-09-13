@@ -87,8 +87,10 @@ void IntakeTask::loop() {
             weight_intake_state = WeightIntakeState::None;
         } else if (conduction_state) {
             weight_intake_state = WeightIntakeState::RealWeightDetected;
+            total_weights++;
         } else if (!conduction_state) {
             weight_intake_state = WeightIntakeState::DummyWeightDetected;
+            total_weights++;
         }
 
         break;
