@@ -9,7 +9,8 @@
 
 class PathSmoother {
   public:
-    explicit PathSmoother(const OccupancyGridGraph &graph) : graph(graph) {}
+    explicit PathSmoother(const OccupancyGridGraph &graph, float maxLineOfSightCost = 1.5f)
+        : graph(graph), maxLineOfSightCost(maxLineOfSightCost) {}
 
     // Stage 1: reduce a dense grid-cell path to the minimal set of waypoints connectable
     // by straight, obstacle-free line segments. Greedy: from each anchor, find the
@@ -39,8 +40,8 @@ class PathSmoother {
 
     // Stage 2: fit a Catmull-Rom spline through the waypoints and sample it densely,
     // producing a smooth world-space path with continuous curvature at each waypoint.
-    template <size_t N, size_t M>
-    void smooth(const etl::vector<uint16_t, N> &waypoints, etl::vector<Eigen::Vector2f, M> &outPath,
+    template <size_t N>
+    void smooth(const etl::vector<uint16_t, N> &waypoints, std::vector<Eigen::Vector2f> &outPath,
                 int samplesPerSegment = 8) const {
         outPath.clear();
         if (waypoints.empty())
@@ -62,8 +63,6 @@ class PathSmoother {
             int samples = (i == segmentCount - 1) ? samplesPerSegment + 1 : samplesPerSegment;
 
             for (int s = 0; s < samples; ++s) {
-                if (outPath.full())
-                    return;
                 float t = static_cast<float>(s) / static_cast<float>(samplesPerSegment);
                 outPath.push_back(catmullRom(p0, p1, p2, p3, t));
             }
@@ -82,6 +81,8 @@ class PathSmoother {
 
     Eigen::Vector2f toWorld(uint16_t node) const;
     bool lineOfSightClear(uint16_t a, uint16_t b) const;
+    float maxLineOfSightCost;
+
     static Eigen::Vector2f catmullRom(const Eigen::Vector2f &p0, const Eigen::Vector2f &p1,
                                       const Eigen::Vector2f &p2, const Eigen::Vector2f &p3,
                                       float t);

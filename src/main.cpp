@@ -30,8 +30,9 @@ static IntakeTask intake_task = IntakeTask();
 static TelemetryTask telemetry_task = TelemetryTask();
 static UserCommandTask user_command_task = UserCommandTask(&drive_train_task);
 
-static AutonomousCommandTask autonomous_command_task = AutonomousCommandTask(
-    &lidar_processing_task, &position_tracking_task, &motion_control_task, &intake_task);
+static AutonomousCommandTask autonomous_command_task =
+    AutonomousCommandTask(&lidar_processing_task, &position_tracking_task, &motion_control_task,
+                          &intake_task, &mapping_task);
 
 const size_t NUM_TASKS = 11;
 

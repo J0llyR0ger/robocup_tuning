@@ -64,7 +64,7 @@ class OccupancyGridGraph {
         }
     }
 
-    bool isBlocked(size_t x, size_t y) const { return traversalCost[idx(x, y)] >= BLOCKED_COST; }
+    float getTraversalCost(size_t x, size_t y) const { return traversalCost[idx(x, y)]; }
 
   private:
     struct KernelEntry {

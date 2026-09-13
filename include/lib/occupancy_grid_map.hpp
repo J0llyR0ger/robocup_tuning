@@ -31,12 +31,12 @@ class OccupancyGridMap {
     size_t height() const;
     float tile_size_meters() const;
 
+    bool world_to_grid(const Eigen::Vector2f &position, int &grid_x, int &grid_y) const;
+
   private:
     std::array<uint8_t, GRID_WIDTH * GRID_HEIGHT> scores;
 
     static size_t to_index(size_t x, size_t y);
-
-    bool world_to_grid(const Eigen::Vector2f &position, int &grid_x, int &grid_y) const;
 
     void apply_beam(const Eigen::Vector2f &origin_world, const Eigen::Vector2f &hit_world);
 

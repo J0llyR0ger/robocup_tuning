@@ -4,15 +4,19 @@
 AutonomousCommandTask::AutonomousCommandTask(LidarProcessingTask *lidar_processing_task,
                                              PositionTrackingTask *position_tracking_task,
                                              MotionControlTask *motion_control_task,
-                                             IntakeTask *intake_task)
+                                             IntakeTask *intake_task, MappingTask *mapping_task)
     : SchedulerTask("autonomous_command"), lidar_processing_task(lidar_processing_task),
       position_tracking_task(position_tracking_task), motion_control_task(motion_control_task),
-      intake_task(intake_task) {}
+      intake_task(intake_task), mapping_task(mapping_task) {}
 
 void AutonomousCommandTask::setup() {}
 
 void AutonomousCommandTask::loop() {
     auto robot_position = this->position_tracking_task->get_current_pose().position;
+
+    this->motion_control_task->set_current_path(this->mapping_task->get_discovery_path());
+
+    return;
 
     if (this->intake_task->total_weights >= 4 && !this->locked_weight_target.has_value()) {
         this->motion_control_task->set_current_path({robot_position, {0.5, 0.5}});

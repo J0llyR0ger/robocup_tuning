@@ -23,18 +23,22 @@ bool PathSmoother::lineOfSightClear(uint16_t a, uint16_t b) const {
 
     int x = x0, y = y0;
     while (true) {
-        if (graph.isBlocked(static_cast<size_t>(x), static_cast<size_t>(y)))
+        // Reject the shortcut if this cell is blocked OR too costly -- not just "not blocked."
+        // This is what makes simplify() respect inflation instead of just hard obstacles.
+        if (graph.getTraversalCost(static_cast<size_t>(x), static_cast<size_t>(y)) >
+            maxLineOfSightCost) {
             return false;
+        }
 
-        // Prevent the line from clipping diagonally past a blocked corner --
-        // same corner-cutting rule used in forEachNeighbor, applied along the whole ray.
         if (x != x1 || y != y1) {
             int e2 = 2 * err;
             bool stepX = e2 >= dy;
             bool stepY = e2 <= dx;
             if (stepX && stepY) {
-                if (graph.isBlocked(static_cast<size_t>(x + sx), static_cast<size_t>(y)) ||
-                    graph.isBlocked(static_cast<size_t>(x), static_cast<size_t>(y + sy))) {
+                if (graph.getTraversalCost(static_cast<size_t>(x + sx), static_cast<size_t>(y)) >
+                        maxLineOfSightCost ||
+                    graph.getTraversalCost(static_cast<size_t>(x), static_cast<size_t>(y + sy)) >
+                        maxLineOfSightCost) {
                     return false;
                 }
             }
@@ -52,7 +56,6 @@ bool PathSmoother::lineOfSightClear(uint16_t a, uint16_t b) const {
     }
     return true;
 }
-
 Eigen::Vector2f PathSmoother::catmullRom(const Eigen::Vector2f &p0, const Eigen::Vector2f &p1,
                                          const Eigen::Vector2f &p2, const Eigen::Vector2f &p3,
                                          float t) {
