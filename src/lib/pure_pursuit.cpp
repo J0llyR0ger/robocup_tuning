@@ -4,7 +4,7 @@
 
 using Eigen::Vector2f;
 
-const float TURN_DEADZONE = 0.2; // TODO: Tune this
+const float TURN_DEADZONE = 0.01; // TODO: Tune this
 
 PurePursuit::PurePursuit(float look_ahead_distance) : look_ahead_distance(look_ahead_distance) {}
 
@@ -61,8 +61,6 @@ std::tuple<float, float> PurePursuit::compute_errors(Pose current_pose) {
         telemetry::publish_f32(telemetry::KEY_NEXTPOINT_X, next_point.x());
         telemetry::publish_f32(telemetry::KEY_NEXTPOINT_Y, next_point.y());
 
-        auto closest_point = get_closest_point(current_position, last_point, next_point);
-
         // Initialize Drive Error as distance to lookahead point plus distance from lookahead point
         // to next point
         drive_error =
@@ -85,7 +83,7 @@ std::tuple<float, float> PurePursuit::compute_errors(Pose current_pose) {
 
         // Only enable turn PID outside a certain distance of target point (this should only
         // matter when approaching the last point in the current path)
-        if ((next_point - current_position).norm() <= TURN_DEADZONE) {
+        if (current_path.size() <= 2 && (next_point - current_position).norm() <= TURN_DEADZONE) {
             turn_error = 0;
         }
     }

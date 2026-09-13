@@ -25,8 +25,11 @@ void MappingTask::loop() {
     this->occupancy_grid.world_to_grid(this->position_tracking_task->get_current_pose().position,
                                        startX, startY);
 
-    int goalX = 40;
-    int goalY = 70;
+    int goalX;
+    int goalY;
+
+    this->occupancy_grid.world_to_grid({FIELD_WIDTH_X_METERS / 2.0, FIELD_HEIGHT_Y_METERS / 2.0},
+                                       goalX, goalY);
 
     OctileHeuristic heuristic(goalX, goalY);
 
@@ -35,7 +38,7 @@ void MappingTask::loop() {
 
     auto simplified_path = smoother.simplify(path);
 
-    smoother.smooth(simplified_path, this->discovery_path, /*samplesPerSegment=*/1);
+    smoother.smooth(simplified_path, this->discovery_path, /*samplesPerSegment=*/8);
 
     uint32_t now_ms = millis();
     if (now_ms >= next_grid_publish_ms) {
