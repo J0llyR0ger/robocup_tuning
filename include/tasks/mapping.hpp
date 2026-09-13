@@ -32,5 +32,7 @@ class MappingTask : public SchedulerTask {
     std::vector<Eigen::Vector2f> get_discovery_path();
     std::vector<Eigen::Vector2f> get_home_path();
 
+    uint32_t get_stack_depth() const override { return 16384; };
+
     const OccupancyGridMap &get_occupancy_grid() const;
 };
