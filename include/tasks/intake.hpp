@@ -3,7 +3,17 @@
 #include "scheduler_task.hpp"
 #include <HardwareSerial.h>
 #include <HerkulexServo.h>
+#include <Wire.h>
+
+#include <SparkFunSX1509.h>
 #include <config.hpp>
+
+enum class WeightIntakeState {
+    None,
+    UnknownWeight,
+    RealWeightDetected,
+    DummyWeightDetected,
+};
 
 class IntakeTask : public SchedulerTask {
   private:
@@ -14,6 +24,10 @@ class IntakeTask : public SchedulerTask {
     unsigned long last_update = 0;
     unsigned long now = 0;
     bool toggle = false;
+
+    SX1509 expander;
+
+    WeightIntakeState weight_intake_state = WeightIntakeState::None;
 
   public:
     IntakeTask();
