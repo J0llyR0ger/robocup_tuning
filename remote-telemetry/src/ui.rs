@@ -637,34 +637,9 @@ pub fn run_ui(command_sink: &mut CommandSink) -> Result<(), Box<dyn std::error::
 
             if telemetry.grid_path.len() >= 2 {
                 for segment in telemetry.grid_path.windows(2) {
-                    let start = segment[0] as usize;
-                    let end = segment[1] as usize;
-
-                    let start_x = start % grid.width as usize;
-                    let start_y = start / grid.width as usize;
-                    let end_x = end % grid.width as usize;
-                    let end_y = end / grid.width as usize;
-
-                    if start_x >= grid.width as usize
-                        || start_y >= grid.height as usize
-                        || end_x >= grid.width as usize
-                        || end_y >= grid.height as usize
-                    {
-                        continue;
-                    }
-
-                    let start_world = Vector2::new(
-                        (start_x as f32 + 0.5) * tile_size_m,
-                        (start_y as f32 + 0.5) * tile_size_m,
-                    );
-                    let end_world = Vector2::new(
-                        (end_x as f32 + 0.5) * tile_size_m,
-                        (end_y as f32 + 0.5) * tile_size_m,
-                    );
-
                     d.draw_line_ex(
-                        world_to_screen(start_world.x, start_world.y),
-                        world_to_screen(end_world.x, end_world.y),
+                        world_to_screen(segment[0].x_m, segment[0].y_m),
+                        world_to_screen(segment[1].x_m, segment[1].y_m),
                         2.0,
                         Color::PURPLE,
                     );

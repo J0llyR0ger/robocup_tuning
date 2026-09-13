@@ -6,6 +6,7 @@
 #include "lib/occupancy_grid_map.hpp"
 #include "lib/weight_tracking.hpp"
 #include <Arduino.h>
+#include <Eigen/Core>
 #include <array>
 #include <cstdint>
 
@@ -71,7 +72,7 @@ size_t flush_values(uint16_t max_entries_per_frame = 32);
 void publish_lidar_points(std::span<LidarResponsePoint> points);
 void publish_lidar_processing(LidarProcessingResult result);
 void publish_occupancy_grid(const OccupancyGridMap &grid);
-void publish_grid_path(std::span<const uint16_t> path_indices);
+void publish_grid_path(std::span<const Eigen::Vector2f> path_points);
 void publish_tracked_weights(std::span<WeightTrackedTarget> tracked_weights);
 
 } // namespace telemetry

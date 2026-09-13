@@ -119,6 +119,12 @@ pub struct TrackedWeight {
     pub confidence: f32,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct GridPathPoint {
+    pub x_m: f32,
+    pub y_m: f32,
+}
+
 #[derive(Clone, Debug)]
 pub enum TelemetryFrame {
     Values(Vec<ValueEntry>),
@@ -126,7 +132,7 @@ pub enum TelemetryFrame {
     LidarProcessing(LidarProcessing),
     OccupancyGrid(OccupancyGrid),
     TrackedWeights(Vec<TrackedWeight>),
-    GridPath(Vec<u16>),
+    GridPath(Vec<GridPathPoint>),
 }
 
 pub fn parse_frame(frame_type: u8, payload: &[u8]) -> Option<TelemetryFrame> {
@@ -321,19 +327,32 @@ pub fn parse_frame(frame_type: u8, payload: &[u8]) -> Option<TelemetryFrame> {
             let count = u16::from_le_bytes([payload[0], payload[1]]) as usize;
             let body = &payload[2..];
 
-            let entry_size = 2usize;
+            let entry_size = 8usize;
             if body.len() < count * entry_size {
                 return None;
             }
 
-            let mut node_indices = Vec::with_capacity(count);
+            let mut path_points = Vec::with_capacity(count);
             for i in 0..count {
                 let base = i * entry_size;
-                let node_index = u16::from_le_bytes([body[base], body[base + 1]]);
-                node_indices.push(node_index);
+
+                let x_m = f32::from_le_bytes([
+                    body[base],
+                    body[base + 1],
+                    body[base + 2],
+                    body[base + 3],
+                ]);
+                let y_m = f32::from_le_bytes([
+                    body[base + 4],
+                    body[base + 5],
+                    body[base + 6],
+                    body[base + 7],
+                ]);
+
+                path_points.push(GridPathPoint { x_m, y_m });
             }
 
-            Some(TelemetryFrame::GridPath(node_indices))
+            Some(TelemetryFrame::GridPath(path_points))
         }
         _ => None,
     }

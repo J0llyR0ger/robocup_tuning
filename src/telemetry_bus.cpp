@@ -48,8 +48,13 @@ struct __attribute__((packed)) TrackedWeightEntry {
     float confidence;
 };
 
+struct __attribute__((packed)) GridPathPointEntry {
+    float x_m;
+    float y_m;
+};
+
 constexpr size_t MAX_PENDING_VALUES = 128;
-constexpr size_t MAX_GRID_PATH_NODES_PER_FRAME = 512;
+constexpr size_t MAX_GRID_PATH_POINTS_PER_FRAME = 512;
 
 Stream *TELEMETRY_PORT = &Serial;
 ValueEntry PENDING_VALUES[MAX_PENDING_VALUES];
@@ -268,25 +273,34 @@ void publish_occupancy_grid(const OccupancyGridMap &grid) {
     write_frame(FrameType::OccupancyGrid, payload.data(), payload_len);
 }
 
-void publish_grid_path(std::span<const uint16_t> path_indices) {
-    size_t count = path_indices.size();
-    if (count > MAX_GRID_PATH_NODES_PER_FRAME) {
-        count = MAX_GRID_PATH_NODES_PER_FRAME;
+void publish_grid_path(std::span<const Eigen::Vector2f> path_points) {
+    size_t count = path_points.size();
+    if (count > MAX_GRID_PATH_POINTS_PER_FRAME) {
+        count = MAX_GRID_PATH_POINTS_PER_FRAME;
     }
 
     constexpr uint16_t MAX_PAYLOAD_LEN =
-        sizeof(uint16_t) + MAX_GRID_PATH_NODES_PER_FRAME * sizeof(uint16_t);
+        sizeof(uint16_t) + MAX_GRID_PATH_POINTS_PER_FRAME * sizeof(GridPathPointEntry);
     uint8_t payload[MAX_PAYLOAD_LEN] = {0};
+
+    GridPathPointEntry entries[MAX_GRID_PATH_POINTS_PER_FRAME] = {};
+
+    for (size_t i = 0; i < count; ++i) {
+        entries[i] = {
+            .x_m = path_points[i].x(),
+            .y_m = path_points[i].y(),
+        };
+    }
 
     uint16_t count_u16 = static_cast<uint16_t>(count);
     memcpy(payload, &count_u16, sizeof(count_u16));
 
     if (count > 0) {
-        memcpy(payload + sizeof(count_u16), path_indices.data(), count * sizeof(uint16_t));
+        memcpy(payload + sizeof(count_u16), entries, count * sizeof(GridPathPointEntry));
     }
 
     write_frame(FrameType::GridPath, payload,
-                sizeof(count_u16) + static_cast<uint16_t>(count * sizeof(uint16_t)));
+                sizeof(count_u16) + static_cast<uint16_t>(count * sizeof(GridPathPointEntry)));
 }
 
 void publish_tracked_weights(std::span<WeightTrackedTarget> tracked_weights) {
