@@ -13,7 +13,7 @@ MotionControlTask::MotionControlTask(DriveTrainTask *drive_train_task,
     : SchedulerTask("motion_control"), drive_train_task(drive_train_task),
       position_tracking_task(position_tracking_task), pure_pursuit(0.3),
       pid_drive(PIDController(DRIVE_KP, DRIVE_KI, 0, 10)
-                    .with_output_limits(-1.0, 1.0)
+                    .with_output_limits(-0.5, 0.5)
                     .with_integral_bounds(-100, 100)),
       pid_turn(PIDController(TURN_KP, TURN_KI, TURN_KD, 3 * DEG_TO_RAD)
                    .with_output_limits(-2.0, 2.0)
