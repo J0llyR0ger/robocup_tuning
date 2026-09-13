@@ -9,8 +9,6 @@
 
 class LidarProcessingTask : public SchedulerTask {
   private:
-    LidarTask *lidar_reader_task;
-    PositionTrackingTask *position_tracking_task;
     LidarProcessingResult last_result{};
     bool has_last_result = false;
 
@@ -18,7 +16,7 @@ class LidarProcessingTask : public SchedulerTask {
     LidarProcessing lidar_processing = LidarProcessing();
 
   public:
-    LidarProcessingTask(LidarTask *lidar_reader_task, PositionTrackingTask *position_tracking_task);
+    LidarProcessingTask();
 
     void setup();
     void loop();
@@ -27,6 +25,8 @@ class LidarProcessingTask : public SchedulerTask {
     const LidarProcessingResult &get_last_result() const;
 
     std::span<WeightTrackedTarget> get_tracked_weights();
+
+    uint32_t get_stack_depth() const override { return 1 << 15; };
 
     int get_frequency() const override { return LIDAR_PROCESSING_FREQ; }
 };

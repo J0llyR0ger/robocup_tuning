@@ -10,31 +10,19 @@
 
 class PositionTrackingTask : public SchedulerTask {
   private:
-    ImuTask *imu_task;
-    DriveTrainTask *drive_train_task;
-    LidarTask *lidar_task;
-
     float last_left_wheel_position;
     float last_right_wheel_position;
 
     float last_heading;
 
-    bool initialized = false;
-
     OdometryModule odometry;
     MonteCarloLocalization mcl;
 
-    Pose current_pose;
-
   public:
-    PositionTrackingTask(ImuTask *imu_task, DriveTrainTask *drive_train_task,
-                         LidarTask *lidar_task);
+    PositionTrackingTask();
 
     void setup();
     void loop();
 
     int get_frequency() const override { return POSITION_TRACKING_TASK_FREQ; }
-
-    Pose get_current_pose();
-    float get_position_uncertainty();
 };

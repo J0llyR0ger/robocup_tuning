@@ -19,6 +19,4 @@ class LidarTask : public SchedulerTask {
     void loop();
 
     int get_frequency() const override { return LIDAR_TASK_FREQ; }
-
-    std::span<LidarResponsePoint> get_points();
 };

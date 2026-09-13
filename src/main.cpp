@@ -7,7 +7,7 @@
 #include "tasks/lidar_processing.hpp"
 #include "tasks/mapping.hpp"
 #include "tasks/motion_control.hpp"
-#include "tasks/position_tracking.hpp"
+// #include "tasks/position_tracking.hpp"
 #include "tasks/telemetry.hpp"
 #include "tasks/user_command.hpp"
 #include <Arduino.h>
@@ -15,43 +15,40 @@
 #include <array>
 #include <memory>
 
-static ImuTask imu_task = ImuTask(&Wire);
-static LidarTask lidar_task = LidarTask();
-static DriveTrainTask drive_train_task = DriveTrainTask();
-
-static PositionTrackingTask position_tracking_task =
-    PositionTrackingTask(&imu_task, &drive_train_task, &lidar_task);
-
-static LidarProcessingTask lidar_processing_task =
-    LidarProcessingTask(&lidar_task, &position_tracking_task);
-
-static MappingTask mapping_task = MappingTask(&position_tracking_task, &lidar_task);
-
-static MotionControlTask motion_control_task =
-    MotionControlTask(&drive_train_task, &position_tracking_task);
-
+static ImuTask imu_task = ImuTask();
 static IntakeTask intake_task = IntakeTask();
 static TelemetryTask telemetry_task = TelemetryTask();
-static UserCommandTask user_command_task = UserCommandTask(&drive_train_task);
+static LidarTask lidar_task = LidarTask();
+static DriveTrainTask drive_train_task = DriveTrainTask();
+static PositionTrackingTask position_tracking_task = PositionTrackingTask();
+static LidarProcessingTask lidar_processing_task = LidarProcessingTask();
 
-static AutonomousCommandTask autonomous_command_task =
-    AutonomousCommandTask(&lidar_processing_task, &position_tracking_task, &motion_control_task,
-                          &intake_task, &mapping_task);
+// static MappingTask mapping_task = MappingTask(&position_tracking_task, &lidar_task);
 
-const size_t NUM_TASKS = 11;
+// static MotionControlTask motion_control_task =
+//     MotionControlTask(&drive_train_task, &position_tracking_task);
+
+// static UserCommandTask user_command_task = UserCommandTask(&drive_train_task);
+
+// static AutonomousCommandTask autonomous_command_task =
+//     AutonomousCommandTask(&lidar_processing_task, &position_tracking_task, &motion_control_task,
+//                           &intake_task, &mapping_task);
+
+const size_t NUM_TASKS = 7;
 
 std::array<SchedulerTask *, NUM_TASKS> tasks = {
-    &lidar_task,
-    &drive_train_task,
     &imu_task,
-    &position_tracking_task,
-    &mapping_task,
-    &motion_control_task,
     &intake_task,
     &telemetry_task,
-    &user_command_task,
+    &lidar_task,
+    &drive_train_task,
+    &position_tracking_task,
     &lidar_processing_task,
-    &autonomous_command_task,
+    // &mapping_task,
+    // &motion_control_task,
+    // &user_command_task,
+    // &lidar_processing_task,
+    // &autonomous_command_task,
 };
 
 /// Rate-monotonic priority assignment: tasks with higher frequencies get
@@ -135,8 +132,9 @@ void setup() {
                         ". Built by gcc " __VERSION__ " (newlib " _NEWLIB_VERSION ") on " __DATE__
                         ". ***\r\n"));
 
-    i2cMutex = xSemaphoreCreateMutex();
+    setupMutexes();
 
+    Wire.begin();
     Wire.setClock(400e3);
 
     start_tasks_rate_monotonic();

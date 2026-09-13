@@ -1,5 +1,6 @@
 #include "tasks/lidar.hpp"
 #include "Eigen/Geometry"
+#include "queues.hpp"
 #include <wiring.h>
 
 LidarTask::LidarTask() : SchedulerTask("lidar_reading_task") {}
@@ -112,6 +113,8 @@ void LidarTask::loop() {
                         LidarResponsePoint corrected = to_robot_frame(point);
                         upsert_point_by_angle(this->points, corrected);
                     }
+
+                    xQueueSendToFront(lidarReader_lidarProcessingScanQueue, &this->points, 0);
                 }
             } else if constexpr (std::is_same_v<T, PacketParseError>) {
                 switch (arg) {
@@ -130,5 +133,3 @@ void LidarTask::loop() {
         },
         response);
 }
-
-std::span<LidarResponsePoint> LidarTask::get_points() { return this->points; }

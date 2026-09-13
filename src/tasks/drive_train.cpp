@@ -1,4 +1,5 @@
 #include "tasks/drive_train.hpp"
+#include "queues.hpp"
 #include "telemetry_bus.hpp"
 #include <wiring.h>
 
@@ -65,19 +66,11 @@ void DriveTrainTask::loop() {
     last_left_ticks = left_ticks;
     last_right_ticks = right_ticks;
 
+    auto wheel_positions = std::make_tuple(RADIANS_PER_TICK * (float)last_left_ticks,
+                                           RADIANS_PER_TICK * (float)last_right_ticks);
+
+    xQueueSendToFront(driveTrain_positionTrackingWheelPositionQueue, &wheel_positions, 0);
+
     telemetry::publish_f32(telemetry::KEY_LEFT_WHEEL_VELOCITY, left_velocity);
     telemetry::publish_f32(telemetry::KEY_RIGHT_WHEEL_VELOCITY, right_velocity);
-}
-
-float DriveTrainTask::get_left_wheel_position() {
-    return RADIANS_PER_TICK * this->last_left_ticks; //
-}
-
-float DriveTrainTask::get_right_wheel_position() {
-    return RADIANS_PER_TICK * this->last_right_ticks; //
-}
-
-void DriveTrainTask::set_commands(float left, float right) {
-    this->left_command = left;
-    this->right_command = right;
 }

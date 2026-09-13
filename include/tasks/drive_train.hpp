@@ -28,10 +28,5 @@ class DriveTrainTask : public SchedulerTask {
     void setup();
     void loop();
 
-    void set_commands(float left, float right);
-
-    float get_left_wheel_position();
-    float get_right_wheel_position();
-
     int get_frequency() const override { return DRIVE_TRAIN_TASK_FREQ; }
 };

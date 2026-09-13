@@ -48,6 +48,9 @@ struct LidarProcessingResult {
 
 class LidarProcessing {
   public:
-    LidarProcessingResult process_points(std::span<LidarResponsePoint> points,
-                                         const Pose &robot_pose);
+    /// Sorts and transforms `points` in place, then writes clusters and fits
+    /// into `result`. Result is an out-parameter (rather than a return value)
+    /// because LidarProcessingResult is far too large to place on task stacks.
+    void process_points(std::span<LidarResponsePoint> points, Pose robot_pose,
+                        LidarProcessingResult &result);
 };

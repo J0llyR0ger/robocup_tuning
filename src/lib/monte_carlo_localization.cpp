@@ -62,6 +62,8 @@ void MonteCarloLocalization::predict(const Eigen::Vector2f &robot_travel, float 
         this->particles[i].pose.heading =
             wrap_heading(this->particles[i].pose.heading + noisy_heading_change);
     }
+
+    this->compute_estimated_pose();
 }
 
 // ----- Particle filter measurement step (beam model) -----

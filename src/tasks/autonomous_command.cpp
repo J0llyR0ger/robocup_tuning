@@ -1,5 +1,6 @@
 #include "tasks/autonomous_command.hpp"
 #include "telemetry_bus.hpp"
+#include <mutexes.hpp>
 
 AutonomousCommandTask::AutonomousCommandTask(LidarProcessingTask *lidar_processing_task,
                                              PositionTrackingTask *position_tracking_task,
@@ -12,7 +13,7 @@ AutonomousCommandTask::AutonomousCommandTask(LidarProcessingTask *lidar_processi
 void AutonomousCommandTask::setup() {}
 
 void AutonomousCommandTask::loop() {
-    auto robot_position = this->position_tracking_task->get_current_pose().position;
+    auto robot_position = get_global_pose().position;
 
     auto weight_targets = this->lidar_processing_task->get_tracked_weights();
 

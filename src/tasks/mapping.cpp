@@ -3,6 +3,7 @@
 #include "lib/path_smoother.hpp"
 #include "telemetry_bus.hpp"
 #include <Arduino.h>
+#include <mutexes.hpp>
 
 MappingTask::MappingTask(PositionTrackingTask *position_tracking_task, LidarTask *lidar_task)
     : SchedulerTask("mapping"), position_tracking_task(position_tracking_task),
@@ -13,17 +14,16 @@ void MappingTask::setup() { this->occupancy_grid.clear(); }
 void MappingTask::loop() {
     static uint32_t next_grid_publish_ms = 0;
 
-    Pose pose = this->position_tracking_task->get_current_pose();
-    this->occupancy_grid.update_from_lidar(pose, this->lidar_task->get_points());
+    Pose pose = get_global_pose();
+
+    // this->occupancy_grid.update_from_lidar(pose, this->lidar_task->get_points());
 
     this->occupancy_graph = OccupancyGridGraph(this->occupancy_grid);
 
-    auto robot_position = this->position_tracking_task->get_current_pose().position;
-
     this->discovery_path = get_path_between_world_points(
-        robot_position, {FIELD_WIDTH_X_METERS / 2.0, FIELD_HEIGHT_Y_METERS / 2.0});
+        pose.position, {FIELD_WIDTH_X_METERS / 2.0, FIELD_HEIGHT_Y_METERS / 2.0});
 
-    this->home_path = get_path_between_world_points(robot_position, {0.5, 0.5});
+    this->home_path = get_path_between_world_points(pose.position, {0.5, 0.5});
 
     uint32_t now_ms = millis();
     if (now_ms >= next_grid_publish_ms) {

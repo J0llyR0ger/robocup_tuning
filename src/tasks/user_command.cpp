@@ -21,7 +21,7 @@ void UserCommandTask::loop() {
 
     if (Serial.available() < sizeof(COMMAND_HEADER) + sizeof(CommandPacket)) {
         if (millis() - last_contact > COMMAND_TIMEOUT) {
-            drive_train_task->set_commands(0.0, 0.0);
+            // drive_train_task->set_commands(0.0, 0.0);
         }
 
         return;
@@ -45,6 +45,6 @@ void UserCommandTask::loop() {
 
     Serial.readBytes((char *)&packet, sizeof(CommandPacket));
 
-    drive_train_task->set_commands((float)packet.left_command / 100.0,
-                                   (float)packet.right_command / 100.0);
+    // drive_train_task->set_commands((float)packet.left_command / 100.0,
+    //                                (float)packet.right_command / 100.0);
 }

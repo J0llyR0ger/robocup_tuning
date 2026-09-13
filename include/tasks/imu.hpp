@@ -13,13 +13,13 @@ class ImuTask : public SchedulerTask {
 
     imu::Vector<3> last_euler_angles;
 
+    Eigen::Vector3f get_euler_angles();
+
   public:
     ImuTask();
 
     void setup();
     void loop();
-
-    Eigen::Vector3f get_euler_angles();
 
     int get_frequency() const override { return IMU_TASK_FREQ; }
 };

@@ -1,5 +1,6 @@
 #include "tasks/motion_control.hpp"
 #include "telemetry_bus.hpp"
+#include <mutexes.hpp>
 
 #define DRIVE_KP 35e-1
 #define DRIVE_KI 0 // 20e-4
@@ -26,7 +27,7 @@ void MotionControlTask::set_current_path(std::vector<Eigen::Vector2f> positions)
 }
 
 void MotionControlTask::loop() {
-    auto pose = position_tracking_task->get_current_pose();
+    auto pose = get_global_pose();
 
     auto [drive_error, turn_error] = pure_pursuit.compute_errors(pose);
 
@@ -45,5 +46,5 @@ void MotionControlTask::loop() {
         right_drive = right_drive / largest_cmd;
     }
 
-    drive_train_task->set_commands(left_drive, right_drive);
+    // drive_train_task->set_commands(left_drive, right_drive);
 }

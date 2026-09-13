@@ -120,11 +120,9 @@ ClusterList get_coarse_clusters(std::span<LidarResponsePoint> points) {
 
 const float LINE_NOISE_THRESHOLD = 0.02f;
 
-LidarProcessingResult fit_clusters(const ClusterList &coarse_clusters,
-                                   etl::vector<LidarResponsePoint, MAX_LIDAR_POINTS> points) {
+void fit_clusters(const ClusterList &coarse_clusters, std::span<const LidarResponsePoint> points,
+                  LidarProcessingResult &result) {
     ClusterList work_stack;
-    etl::vector<LineFit, MAX_LIDAR_POINTS> line_fits;
-    etl::vector<CircleFit, MAX_LIDAR_POINTS> circle_fits;
 
     for (auto s : coarse_clusters) {
         work_stack.push_back(s);
@@ -139,7 +137,7 @@ LidarProcessingResult fit_clusters(const ClusterList &coarse_clusters,
 
             if (MIN_CIRCLE_RADIUS < circle_fit.r && circle_fit.r < MAX_CIRCLE_RADIUS &&
                 circle_fit.radius_deviation < MAX_CIRCLE_NOISE) {
-                circle_fits.push_back(circle_fit);
+                result.circles.push_back(circle_fit);
 
                 continue;
             }
@@ -164,7 +162,7 @@ LidarProcessingResult fit_clusters(const ClusterList &coarse_clusters,
         }
 
         if (furthest_distance <= LINE_NOISE_THRESHOLD) {
-            line_fits.push_back(line);
+            result.line_segments.push_back(line);
             continue;
         }
 
@@ -189,16 +187,17 @@ LidarProcessingResult fit_clusters(const ClusterList &coarse_clusters,
             work_stack.push_back(second);
         }
     }
-
-    return {line_fits, circle_fits};
 }
 
-LidarProcessingResult LidarProcessing::process_points(std::span<LidarResponsePoint> unsorted_points,
-                                                      const Pose &robot_pose) {
-    etl::vector<LidarResponsePoint, MAX_LIDAR_POINTS> points(unsorted_points.begin(),
-                                                             unsorted_points.end());
+void LidarProcessing::process_points(std::span<LidarResponsePoint> points, Pose robot_pose,
+                                     LidarProcessingResult &result) {
+    result.line_segments.clear();
+    result.circles.clear();
+    result.clusters.clear();
+    result.transformed_points.clear();
 
-    std::sort(points.begin(), points.end(), [](auto a, auto b) { return a.angle < b.angle; });
+    std::sort(points.begin(), points.end(),
+              [](const auto &a, const auto &b) { return a.angle < b.angle; });
 
     const float heading = robot_pose.heading;
     const float heading_sin = sinf(heading);
@@ -216,11 +215,9 @@ LidarProcessingResult LidarProcessing::process_points(std::span<LidarResponsePoi
         point.position = Eigen::Vector2f(world_x, world_y);
     }
 
-    ClusterList coarse_clusters = get_coarse_clusters(points);
+    result.clusters = get_coarse_clusters(points);
 
-    auto result = fit_clusters(coarse_clusters, points);
-    result.clusters = coarse_clusters;
-    result.transformed_points = points;
+    fit_clusters(result.clusters, points, result);
 
-    return result;
+    result.transformed_points.assign(points.begin(), points.end());
 }

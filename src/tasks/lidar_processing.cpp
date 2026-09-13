@@ -1,19 +1,21 @@
 #include "tasks/lidar_processing.hpp"
 #include "lib/lidar_processing.hpp"
 #include "telemetry_bus.hpp"
+#include <mutexes.hpp>
+#include <queues.hpp>
 
-LidarProcessingTask::LidarProcessingTask(LidarTask *lidar_reader_task,
-                                         PositionTrackingTask *position_tracking_task)
-    : SchedulerTask("lidar_processing"), lidar_reader_task(lidar_reader_task),
-      position_tracking_task(position_tracking_task) {}
+LidarProcessingTask::LidarProcessingTask() : SchedulerTask("lidar_processing") {}
 
 void LidarProcessingTask::setup() {}
 
 void LidarProcessingTask::loop() {
-    auto points = lidar_reader_task->get_points();
-    auto pose = position_tracking_task->get_current_pose();
+    etl::vector<LidarResponsePoint, MAX_LIDAR_POINTS> points;
 
-    this->last_result = this->lidar_processing.process_points(points, pose);
+    xQueueReceive(lidarReader_lidarProcessingScanQueue, &points, portMAX_DELAY);
+
+    auto pose = get_global_pose();
+
+    this->lidar_processing.process_points(points, pose, this->last_result);
     this->has_last_result = true;
 
     this->weight_tracking.update_from_clusters(this->last_result.clusters);
