@@ -18,6 +18,7 @@ enum class FrameType : uint8_t {
     LidarProcessing = 3,
     OccupancyGrid = 4,
     TrackedWeights = 5,
+    GridPath = 6,
 };
 
 struct __attribute__((packed)) FrameHeader {
@@ -48,6 +49,7 @@ struct __attribute__((packed)) TrackedWeightEntry {
 };
 
 constexpr size_t MAX_PENDING_VALUES = 128;
+constexpr size_t MAX_GRID_PATH_NODES_PER_FRAME = 512;
 
 Stream *TELEMETRY_PORT = &Serial;
 ValueEntry PENDING_VALUES[MAX_PENDING_VALUES];
@@ -264,6 +266,27 @@ void publish_occupancy_grid(const OccupancyGridMap &grid) {
     memcpy(payload.data() + offset, scores.data(), scores.size());
 
     write_frame(FrameType::OccupancyGrid, payload.data(), payload_len);
+}
+
+void publish_grid_path(std::span<const uint16_t> path_indices) {
+    size_t count = path_indices.size();
+    if (count > MAX_GRID_PATH_NODES_PER_FRAME) {
+        count = MAX_GRID_PATH_NODES_PER_FRAME;
+    }
+
+    constexpr uint16_t MAX_PAYLOAD_LEN =
+        sizeof(uint16_t) + MAX_GRID_PATH_NODES_PER_FRAME * sizeof(uint16_t);
+    uint8_t payload[MAX_PAYLOAD_LEN] = {0};
+
+    uint16_t count_u16 = static_cast<uint16_t>(count);
+    memcpy(payload, &count_u16, sizeof(count_u16));
+
+    if (count > 0) {
+        memcpy(payload + sizeof(count_u16), path_indices.data(), count * sizeof(uint16_t));
+    }
+
+    write_frame(FrameType::GridPath, payload,
+                sizeof(count_u16) + static_cast<uint16_t>(count * sizeof(uint16_t)));
 }
 
 void publish_tracked_weights(std::span<WeightTrackedTarget> tracked_weights) {

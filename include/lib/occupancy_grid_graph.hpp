@@ -18,6 +18,10 @@ class OccupancyGridGraph {
     // with the AStarWorkspace "unvisited" sentinel.
     static constexpr float BLOCKED_COST = std::numeric_limits<float>::max() / 2.0f;
 
+    static constexpr int MAX_INFLATION_RADIUS = 6;
+    static constexpr size_t MAX_KERNEL_SIZE =
+        (2 * MAX_INFLATION_RADIUS + 1) * (2 * MAX_INFLATION_RADIUS + 1);
+
     explicit OccupancyGridGraph(const OccupancyGridMap &grid, uint8_t blockThreshold = 220,
                                 float costWeight = 4.0f, int inflationRadius = 4,
                                 float inflationWeight = 6.0f);
@@ -61,12 +65,23 @@ class OccupancyGridGraph {
     }
 
   private:
+    struct KernelEntry {
+        int8_t dx, dy;
+        float weight; // distance falloff, precomputed once
+    };
+
     bool inBounds(int x, int y) const;
 
-    void precompute(const OccupancyGridMap &grid, uint8_t blockThreshold, float costWeight,
-                    int inflationRadius, float inflationWeight);
+    // Builds the (dx, dy, weight) offset list once, sorted by weight descending so
+    // nearbyMax can exit early once no remaining entry could beat the current best.
+    void buildKernel(int radius);
 
-    float nearbyMax(const std::array<uint8_t, NUM_NODES> &scores, int x, int y, int radius) const;
+    void precompute(const OccupancyGridMap &grid, uint8_t blockThreshold, float costWeight,
+                    float inflationWeight);
+
+    float nearbyMax(const std::array<uint8_t, NUM_NODES> &scores, int x, int y) const;
+
+    etl::vector<KernelEntry, MAX_KERNEL_SIZE> kernel;
 
     std::array<float, NUM_NODES> traversalCost{};
 };

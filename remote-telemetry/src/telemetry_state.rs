@@ -18,6 +18,7 @@ pub struct TelemetrySnapshot {
     pub lidar_processing: LidarProcessing,
     pub occupancy_grid: Option<OccupancyGrid>,
     pub tracked_weights: Vec<TrackedWeight>,
+    pub grid_path: Vec<u16>,
 }
 
 impl TelemetrySnapshot {
@@ -31,6 +32,7 @@ impl TelemetrySnapshot {
             },
             occupancy_grid: None,
             tracked_weights: Vec::new(),
+            grid_path: Vec::new(),
         }
     }
 }

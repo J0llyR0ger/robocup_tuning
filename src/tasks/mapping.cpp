@@ -1,4 +1,5 @@
 #include "tasks/mapping.hpp"
+#include "lib/a_star.hpp"
 #include "telemetry_bus.hpp"
 #include <Arduino.h>
 
@@ -16,9 +17,18 @@ void MappingTask::loop() {
 
     this->occupancy_graph = OccupancyGridGraph(this->occupancy_grid);
 
+    int goalX = 40;
+    int goalY = 90;
+
+    OctileHeuristic heuristic(goalX, goalY);
+
+    auto path = aStarSearch(this->occupancy_graph, OccupancyGridGraph::idx(10, 10),
+                            OccupancyGridGraph::idx(goalX, goalY), heuristic);
+
     uint32_t now_ms = millis();
     if (now_ms >= next_grid_publish_ms) {
         telemetry::publish_occupancy_grid(this->occupancy_grid);
+        telemetry::publish_grid_path(std::span<const uint16_t>(path.data(), path.size()));
         next_grid_publish_ms = now_ms + 1000;
     }
 }

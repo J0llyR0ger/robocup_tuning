@@ -282,5 +282,8 @@ fn apply_frame(frame: TelemetryFrame) {
         TelemetryFrame::TrackedWeights(tracked_weights) => {
             telemetry.tracked_weights = tracked_weights;
         }
+        TelemetryFrame::GridPath(path) => {
+            telemetry.grid_path = path;
+        }
     }
 }
