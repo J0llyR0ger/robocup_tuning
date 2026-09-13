@@ -70,3 +70,17 @@ class OccupancyGridGraph {
 
     std::array<float, NUM_NODES> traversalCost{};
 };
+
+struct OctileHeuristic {
+    size_t goalX, goalY;
+    OctileHeuristic(size_t gx, size_t gy) : goalX(gx), goalY(gy) {}
+
+    inline float operator()(uint16_t node) const {
+        size_t x = OccupancyGridGraph::xOf(node);
+        size_t y = OccupancyGridGraph::yOf(node);
+        float dx = std::fabs(static_cast<float>(goalX) - static_cast<float>(x));
+        float dy = std::fabs(static_cast<float>(goalY) - static_cast<float>(y));
+        constexpr float D = 1.0f, D2 = 1.41421356f;
+        return D * (dx + dy) + (D2 - 2 * D) * std::min(dx, dy);
+    }
+};

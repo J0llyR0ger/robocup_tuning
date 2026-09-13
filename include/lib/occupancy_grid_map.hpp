@@ -9,7 +9,7 @@
 #include <span>
 class OccupancyGridMap {
   public:
-    static constexpr float TILE_SIZE_METERS = 0.025f;
+    static constexpr float TILE_SIZE_METERS = 0.05f;
 
     static constexpr size_t GRID_WIDTH = FIELD_WIDTH_X_METERS / TILE_SIZE_METERS;
     static constexpr size_t GRID_HEIGHT = FIELD_HEIGHT_Y_METERS / TILE_SIZE_METERS;
