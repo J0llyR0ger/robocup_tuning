@@ -5,6 +5,10 @@ IntakeTask::IntakeTask() : SchedulerTask("intake_task") {}
 
 static const int WEIGHT_DETECTION_DEBOUNCE_MS = 8;
 
+const int KI = 0x0200;
+
+int angleToNum(float angle) { return 512 + (int)(angle / 0.325); }
+
 void IntakeTask::setup() {
     Serial7.begin(115200);
 
@@ -24,17 +28,23 @@ void IntakeTask::setup() {
     expander.debouncePin(ENTRY_SWITCH_PIN);
 
     expander.debounceTime(WEIGHT_DETECTION_DEBOUNCE_MS);
-}
 
-int angleToNum(float angle) { return 512 + (int)(angle / 0.325); }
+    left_servo.writeRam(HerkulexRamRegister::AccelerationRatio, 0x10);
+    left_servo.writeRam2(HerkulexRamRegister::PositionKd, 0);
+    left_servo.writeRam2(HerkulexRamRegister::PositionKi, KI);
+
+    right_servo.writeRam(HerkulexRamRegister::AccelerationRatio, 0x10);
+    right_servo.writeRam2(HerkulexRamRegister::PositionKd, 0);
+    right_servo.writeRam2(HerkulexRamRegister::PositionKi, KI);
+}
 
 void IntakeTask::set_position(bool up) {
     if (up) {
-        left_servo.setPosition(angleToNum(-15.0), 100, HerkulexLed::Green);
-        right_servo.setPosition(angleToNum(9.0), 100, HerkulexLed::Green);
+        left_servo.setPosition(angleToNum(-5.0), 25, HerkulexLed::Green);
+        right_servo.setPosition(angleToNum(25.0), 25, HerkulexLed::Green);
     } else {
-        left_servo.setPosition(angleToNum(45.0), 100, HerkulexLed::Blue);
-        right_servo.setPosition(angleToNum(-51.0), 100, HerkulexLed::Blue);
+        left_servo.setPosition(angleToNum(45.0), 25, HerkulexLed::Blue);
+        right_servo.setPosition(angleToNum(-25.0), 25, HerkulexLed::Blue);
     }
 }
 
