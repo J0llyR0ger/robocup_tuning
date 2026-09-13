@@ -22,14 +22,6 @@ std::tuple<float, float> PurePursuit::compute_errors(Pose current_pose) {
     float drive_error = 0;
 
     if (current_path.size() >= 1) {
-        auto current_direction = current_pose.get_direction_vector();
-
-        float current_heading = current_pose.heading;
-
-        if (drive_path_backwards) {
-            current_heading = diff_angle(std::numbers::pi, current_heading);
-        }
-
         // Apply regular pure pursuit
         Vector2f last_point;
         Vector2f next_point;
@@ -40,6 +32,24 @@ std::tuple<float, float> PurePursuit::compute_errors(Pose current_pose) {
         } else {
             last_point = current_path[0];
             next_point = current_path[1];
+
+            // Ensure lookahead point is always in right place by clearing old parts of path
+            // (This is important with very fine paths)
+            while (current_path.size() >= 2 &&
+                   (next_point - current_position).norm() <= look_ahead_distance) {
+                last_point = current_path[0];
+                next_point = current_path[1];
+
+                current_path.erase(current_path.begin());
+            }
+        }
+
+        auto current_direction = current_pose.get_direction_vector();
+
+        float current_heading = current_pose.heading;
+
+        if (drive_path_backwards) {
+            current_heading = diff_angle(std::numbers::pi, current_heading);
         }
 
         auto lookahead_point = get_snapped_radius_target(current_position, look_ahead_distance,
@@ -73,19 +83,10 @@ std::tuple<float, float> PurePursuit::compute_errors(Pose current_pose) {
 
         turn_error = diff_angle(current_heading, std::atan2(direction.x(), direction.y()));
 
-        float distance_to_next_point = (next_point - current_position).norm();
-
         // Only enable turn PID outside a certain distance of target point (this should only
         // matter when approaching the last point in the current path)
-        if (distance_to_next_point <= TURN_DEADZONE) {
+        if ((next_point - current_position).norm() <= TURN_DEADZONE) {
             turn_error = 0;
-        }
-
-        // next_point_distance may jump around, but will not go far
-        // below look_ahead_distance until approaching the final point
-
-        if (current_path.size() >= 2 && distance_to_next_point <= look_ahead_distance) {
-            current_path.erase(current_path.begin());
         }
     }
 
