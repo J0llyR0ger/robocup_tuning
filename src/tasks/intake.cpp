@@ -1,5 +1,6 @@
 #include "tasks/intake.hpp"
 #include "Arduino.h"
+#include <mutexes.hpp>
 
 IntakeTask::IntakeTask() : SchedulerTask("intake_task") {}
 
@@ -55,16 +56,20 @@ uint16_t readPins() {
     // Manually read the pins instead of using the expander library, as the library uses redundant
     // multiple tranmissions when reading more than 1 pin
 
-    Wire.beginTransmission(IO_EXPANDER_ADDRESS);
-    Wire.write(PIN_INPUT_STATE_ADDRESS);
-    Wire.endTransmission();
-    Wire.requestFrom(IO_EXPANDER_ADDRESS, (uint8_t)2);
+    if (xSemaphoreTake(i2cMutex, portMAX_DELAY)) {
+        Wire.beginTransmission(IO_EXPANDER_ADDRESS);
+        Wire.write(PIN_INPUT_STATE_ADDRESS);
+        Wire.endTransmission();
+        Wire.requestFrom(IO_EXPANDER_ADDRESS, (uint8_t)2);
 
-    uint16_t msb = (Wire.read() & 0x00FF) << 8;
-    uint16_t lsb = (Wire.read() & 0x00FF);
-    uint16_t readValue = msb | lsb;
+        uint16_t msb = (Wire.read() & 0x00FF) << 8;
+        uint16_t lsb = (Wire.read() & 0x00FF);
+        uint16_t readValue = msb | lsb;
 
-    return msb | lsb;
+        xSemaphoreGive(i2cMutex);
+
+        return msb | lsb;
+    }
 }
 
 void IntakeTask::loop() {

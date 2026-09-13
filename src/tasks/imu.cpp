@@ -1,7 +1,10 @@
+#pragma once
+
 #include "tasks/imu.hpp"
+#include "mutexes.hpp"
 #include "telemetry_bus.hpp"
 
-ImuTask::ImuTask(TwoWire *wire) : SchedulerTask("imu_task"), imu(55, 0x28, wire) {}
+ImuTask::ImuTask() : SchedulerTask("imu_task"), imu(55, 0x28) {}
 
 void ImuTask::setup() {
     if (!this->imu.begin()) {
@@ -10,13 +13,17 @@ void ImuTask::setup() {
 }
 
 void ImuTask::loop() {
-    Eigen::Vector3f angles = this->get_euler_angles();
-    telemetry::publish_f32(telemetry::KEY_PITCH, angles.x());
+    if (xSemaphoreTake(i2cMutex, portMAX_DELAY)) {
+        this->last_euler_angles = this->imu.getVector(Adafruit_BNO055::VECTOR_EULER);
+
+        xSemaphoreGive(i2cMutex);
+    }
+
+    telemetry::publish_f32(telemetry::KEY_PITCH, this->get_euler_angles().x());
 }
 
 Eigen::Vector3f ImuTask::get_euler_angles() {
-    imu::Vector<3> eulers = this->imu.getVector(Adafruit_BNO055::VECTOR_EULER);
-
+    auto eulers = this->last_euler_angles;
     // Compass-style convention:
     // +heading is clockwise, 0 is forward, matching the robot/world visualization.
     return {-eulers.y() * DEG_TO_RAD, eulers.x() * DEG_TO_RAD, eulers.z() * DEG_TO_RAD};

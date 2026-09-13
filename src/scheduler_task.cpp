@@ -14,6 +14,8 @@ void SchedulerTask::task_entry(void *instance) {
 
     TickType_t last_wake_time = xTaskGetTickCount();
 
+    task->setup();
+
     while (true) {
         uint32_t start = micros();
 

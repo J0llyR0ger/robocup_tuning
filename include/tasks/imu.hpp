@@ -11,8 +11,10 @@ class ImuTask : public SchedulerTask {
   private:
     Adafruit_BNO055 imu;
 
+    imu::Vector<3> last_euler_angles;
+
   public:
-    ImuTask(TwoWire *port);
+    ImuTask();
 
     void setup();
     void loop();

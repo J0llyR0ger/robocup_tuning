@@ -1,4 +1,5 @@
 #include "arduino_freertos.h"
+#include "mutexes.hpp"
 #include "tasks/autonomous_command.hpp"
 #include "tasks/imu.hpp"
 #include "tasks/intake.hpp"
@@ -134,9 +135,7 @@ void setup() {
                         ". Built by gcc " __VERSION__ " (newlib " _NEWLIB_VERSION ") on " __DATE__
                         ". ***\r\n"));
 
-    for (size_t i = 0; i < NUM_TASKS; i++) {
-        tasks[i]->setup();
-    }
+    i2cMutex = xSemaphoreCreateMutex();
 
     Wire.setClock(400e3);
 
