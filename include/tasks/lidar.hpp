@@ -18,5 +18,7 @@ class LidarTask : public SchedulerTask {
     void setup();
     void loop();
 
+    uint32_t get_stack_depth() const override { return 1 << 12; };
+
     int get_frequency() const override { return LIDAR_TASK_FREQ; }
 };

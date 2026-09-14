@@ -1,6 +1,8 @@
 #include "tasks/lidar.hpp"
 #include "Eigen/Geometry"
 #include "queues.hpp"
+#include <telemetry_bus.hpp>
+#include <utils.hpp>
 #include <wiring.h>
 
 LidarTask::LidarTask() : SchedulerTask("lidar_reading_task") {}
@@ -9,16 +11,6 @@ static uint8_t SERIAL_MEMORY[200];
 
 constexpr uint32_t LIDAR_TELEMETRY_PERIOD_MICROS = 100;
 constexpr float LIDAR_REPLACEMENT_ANGLE_EPSILON = 1.0f * DEG_TO_RAD;
-
-float wrap_angle_positive(float angle) {
-    float wrapped = fmodf(angle, 2.0 * PI);
-
-    if (wrapped < 0.0f) {
-        wrapped += 2.0 * PI;
-    }
-
-    return wrapped;
-}
 
 LidarResponsePoint to_robot_frame(const LidarResponsePoint &point) {
     auto rotated = Eigen::Rotation2Df(-LIDAR_ANGLE * DEG_TO_RAD) * point.position;
@@ -33,25 +25,29 @@ LidarResponsePoint to_robot_frame(const LidarResponsePoint &point) {
     };
 }
 
-float smallest_angular_difference(float a, float b) {
-    float diff = wrap_angle_positive(a) - wrap_angle_positive(b);
-
-    if (diff > PI) {
-        diff -= 2.0f * PI;
-    } else if (diff < -PI) {
-        diff += 2.0f * PI;
-    }
-
-    return fabsf(diff);
-}
-
 void upsert_point_by_angle(etl::vector<LidarResponsePoint, MAX_LIDAR_POINTS> &points,
                            const LidarResponsePoint &new_point) {
-    if (points.size() > 350) {
+    if (points.full()) {
         points.erase(points.begin());
     }
 
     points.push_back(new_point);
+
+    if (points.size() >= 3 &&
+        diff_angle(points[points.size() - 1].angle, points[points.size() - 2].angle) >
+            diff_angle(points[points.size() - 1].angle, points[0].angle)) {
+        points.erase(points.begin());
+    }
+}
+
+float wrap_angle_positive(float angle) {
+    float wrapped = fmodf(angle, 2.0 * PI);
+
+    if (wrapped < 0.0f) {
+        wrapped += 2.0 * PI;
+    }
+
+    return wrapped;
 }
 
 bool is_angle_valid(float angle_radians) {
@@ -112,9 +108,22 @@ void LidarTask::loop() {
 
                         LidarResponsePoint corrected = to_robot_frame(point);
                         upsert_point_by_angle(this->points, corrected);
-                    }
 
-                    xQueueSendToFront(lidarReader_lidarProcessingScanQueue, &this->points, 0);
+                        // Send the scan when the start of the scan crosses the positive X axis
+                        if (this->points.size() >= 2 &&
+                            this->points[this->points.size() - 2]
+                                .angle<std::numbers::pi && //
+                                       this->points[this->points.size() - 1]
+                                           .angle>
+                                    std::numbers::pi //
+                        ) {
+                            LidarScanPayload payload;
+                            payload.count = this->points.size();
+                            memcpy(payload.points, this->points.data(),
+                                   payload.count * sizeof(LidarResponsePoint));
+                            xQueueSendToFront(lidarReader_lidarProcessingScanQueue, &payload, 0);
+                        }
+                    }
                 }
             } else if constexpr (std::is_same_v<T, PacketParseError>) {
                 switch (arg) {

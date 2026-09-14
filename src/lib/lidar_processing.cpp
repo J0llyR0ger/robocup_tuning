@@ -176,7 +176,7 @@ void fit_clusters(const ClusterList &coarse_clusters, std::span<const LidarRespo
             second = {range.start + split, 0};
         } else {
             first = {range.start, split + 1};
-            second = {range.start + split + 1, range.count - split + 1};
+            second = {range.start + split + 1, range.count - split - 1};
         }
 
         if (first.count >= MIN_POINTS_PER_OBJECT) {
@@ -195,15 +195,16 @@ void LidarProcessing::process_points(std::span<LidarResponsePoint> points, Pose 
     result.circles.clear();
     result.clusters.clear();
     result.transformed_points.clear();
+    result.transformed_points.assign(points.begin(), points.end());
 
-    std::sort(points.begin(), points.end(),
+    std::sort(result.transformed_points.begin(), result.transformed_points.end(),
               [](const auto &a, const auto &b) { return a.angle < b.angle; });
 
     const float heading = robot_pose.heading;
     const float heading_sin = sinf(heading);
     const float heading_cos = cosf(heading);
 
-    for (auto &point : points) {
+    for (auto &point : result.transformed_points) {
         const float robot_x = point.position.x();
         const float robot_y = point.position.y();
 
@@ -215,9 +216,7 @@ void LidarProcessing::process_points(std::span<LidarResponsePoint> points, Pose 
         point.position = Eigen::Vector2f(world_x, world_y);
     }
 
-    result.clusters = get_coarse_clusters(points);
+    result.clusters = get_coarse_clusters(result.transformed_points);
 
-    fit_clusters(result.clusters, points, result);
-
-    result.transformed_points.assign(points.begin(), points.end());
+    fit_clusters(result.clusters, result.transformed_points, result);
 }
