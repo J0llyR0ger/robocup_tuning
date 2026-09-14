@@ -9,9 +9,6 @@
 
 class MappingTask : public SchedulerTask {
   private:
-    PositionTrackingTask *position_tracking_task;
-    LidarTask *lidar_task;
-
     OccupancyGridMap occupancy_grid = OccupancyGridMap();
     OccupancyGridGraph occupancy_graph = OccupancyGridGraph(occupancy_grid);
 
@@ -22,7 +19,7 @@ class MappingTask : public SchedulerTask {
                                                                Eigen::Vector2f end);
 
   public:
-    MappingTask(PositionTrackingTask *position_tracking_task, LidarTask *lidar_task);
+    MappingTask();
 
     void setup() override;
     void loop() override;
@@ -32,7 +29,7 @@ class MappingTask : public SchedulerTask {
     std::vector<Eigen::Vector2f> get_discovery_path();
     std::vector<Eigen::Vector2f> get_home_path();
 
-    uint32_t get_stack_depth() const override { return 16384; };
+    uint32_t get_stack_depth() const override { return 1024 * 20; };
 
     const OccupancyGridMap &get_occupancy_grid() const;
 };

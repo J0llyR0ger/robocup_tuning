@@ -4,10 +4,9 @@
 #include "telemetry_bus.hpp"
 #include <Arduino.h>
 #include <mutexes.hpp>
+#include <queues.hpp>
 
-MappingTask::MappingTask(PositionTrackingTask *position_tracking_task, LidarTask *lidar_task)
-    : SchedulerTask("mapping"), position_tracking_task(position_tracking_task),
-      lidar_task(lidar_task) {}
+MappingTask::MappingTask() : SchedulerTask("mapping") {}
 
 void MappingTask::setup() { this->occupancy_grid.clear(); }
 
@@ -16,21 +15,36 @@ void MappingTask::loop() {
 
     Pose pose = get_global_pose();
 
-    // this->occupancy_grid.update_from_lidar(pose, this->lidar_task->get_points());
+    LidarScanPayload payload;
+    xQueueReceive(lidarReader_MappingScanQueue, &payload, portMAX_DELAY);
+
+    etl::vector<LidarResponsePoint, MAX_LIDAR_POINTS> points;
+    points.assign(payload.points, payload.points + payload.count);
+
+    this->occupancy_grid.update_from_lidar(pose, points);
 
     this->occupancy_graph = OccupancyGridGraph(this->occupancy_grid);
+
+    int startX, startY;
+
+    this->occupancy_grid.world_to_grid(pose.position, startX, startY);
+
+    int goalX, goalY;
+    this->occupancy_grid.world_to_grid({FIELD_WIDTH_X_METERS / 2.0, FIELD_HEIGHT_Y_METERS / 2.0},
+                                       goalX, goalY);
+
+    OctileHeuristic heuristic(goalX, goalY);
+
+    auto path = aStarSearch(this->occupancy_graph, OccupancyGridGraph::idx(startX, startY),
+                            OccupancyGridGraph::idx(goalX, goalY), heuristic);
 
     this->discovery_path = get_path_between_world_points(
         pose.position, {FIELD_WIDTH_X_METERS / 2.0, FIELD_HEIGHT_Y_METERS / 2.0});
 
     this->home_path = get_path_between_world_points(pose.position, {0.5, 0.5});
 
-    uint32_t now_ms = millis();
-    if (now_ms >= next_grid_publish_ms) {
-        telemetry::publish_occupancy_grid(this->occupancy_grid);
-        telemetry::publish_grid_path(this->discovery_path);
-        next_grid_publish_ms = now_ms + 1000;
-    }
+    telemetry::publish_occupancy_grid(this->occupancy_grid);
+    telemetry::publish_grid_path(this->discovery_path);
 }
 
 std::vector<Eigen::Vector2f> MappingTask::get_discovery_path() { return this->discovery_path; }

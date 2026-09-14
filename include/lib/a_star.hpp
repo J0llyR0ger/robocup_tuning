@@ -19,10 +19,12 @@ struct HeapCompare {
     bool operator()(const HeapEntry &a, const HeapEntry &b) const { return a.f > b.f; }
 };
 
-template <int NUM_NODES> struct AStarWorkspace {
-    std::array<float, NUM_NODES> gScore;
-    std::array<uint16_t, NUM_NODES> cameFrom;
-    std::array<bool, NUM_NODES> closed;
+static const size_t MAX_NODES = 8192;
+
+struct AStarWorkspace {
+    std::array<float, MAX_NODES> gScore;
+    std::array<uint16_t, MAX_NODES> cameFrom;
+    std::array<bool, MAX_NODES> closed;
 
     void reset() {
         gScore.fill(std::numeric_limits<float>::infinity());
@@ -33,6 +35,11 @@ template <int NUM_NODES> struct AStarWorkspace {
         // in the same code path that writes cameFrom[n]. No stale reads possible.
     }
 };
+
+static AStarWorkspace ws;
+
+static etl::priority_queue<HeapEntry, MAX_NODES, etl::vector<HeapEntry, MAX_NODES>, HeapCompare>
+    openSet;
 
 // ---------- Generic graph requirements ----------
 // Any Graph type passed to aStarSearch must provide:
@@ -53,13 +60,10 @@ template <typename Graph, typename Heuristic, int MAX_QUEUE_SIZE = Graph::NUM_NO
 etl::vector<uint16_t, Graph::NUM_NODES> aStarSearch(const Graph &graph, uint16_t startIdx,
                                                     uint16_t goalIdx, const Heuristic &heuristic) {
 
-    static AStarWorkspace<Graph::NUM_NODES> ws;
+    static_assert(MAX_QUEUE_SIZE <= MAX_NODES);
 
     ws.reset();
-
-    etl::priority_queue<HeapEntry, MAX_QUEUE_SIZE, etl::vector<HeapEntry, MAX_QUEUE_SIZE>,
-                        HeapCompare>
-        openSet;
+    openSet.clear();
 
     ws.gScore[startIdx] = 0.0f;
 
@@ -94,25 +98,23 @@ etl::vector<uint16_t, Graph::NUM_NODES> aStarSearch(const Graph &graph, uint16_t
         });
     }
 
-    // if (ws.gScore[goalIdx] == std::numeric_limits<float>::infinity())
-    //     return -1;
+    if (ws.gScore[goalIdx] == std::numeric_limits<float>::infinity()) {
+        return etl::vector<uint16_t, Graph::NUM_NODES>{}; // no path found
+    }
 
-    // Count path length first, since outPath needs to be filled front-to-back
-    // but reconstruction walks backward from goal to start.
     int count = 0;
-
     for (uint16_t cur = goalIdx;; cur = ws.cameFrom[cur]) {
         count++;
-
         if (cur == startIdx)
             break;
     }
 
-    // if (count > outPath.capacity())
-    //     return -1;
+    if (static_cast<size_t>(count) > Graph::NUM_NODES) {
+        return etl::vector<uint16_t,
+                           Graph::NUM_NODES>{}; // shouldn't happen if reachable, but stay safe
+    }
 
     etl::vector<uint16_t, Graph::NUM_NODES> outPath;
-
     outPath.resize(count);
 
     int writeIdx = count - 1;
