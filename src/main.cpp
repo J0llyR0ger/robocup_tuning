@@ -7,7 +7,6 @@
 #include "tasks/lidar_processing.hpp"
 #include "tasks/mapping.hpp"
 #include "tasks/motion_control.hpp"
-// #include "tasks/position_tracking.hpp"
 #include "tasks/telemetry.hpp"
 #include "tasks/user_command.hpp"
 #include <Arduino.h>
@@ -24,9 +23,7 @@ static PositionTrackingTask position_tracking_task = PositionTrackingTask();
 static LidarProcessingTask lidar_processing_task = LidarProcessingTask();
 
 static MappingTask mapping_task = MappingTask();
-
-// static MotionControlTask motion_control_task =
-//     MotionControlTask(&drive_train_task, &position_tracking_task);
+static MotionControlTask motion_control_task = MotionControlTask();
 
 // static UserCommandTask user_command_task = UserCommandTask(&drive_train_task);
 
@@ -34,7 +31,7 @@ static MappingTask mapping_task = MappingTask();
 //     AutonomousCommandTask(&lidar_processing_task, &position_tracking_task, &motion_control_task,
 //                           &intake_task, &mapping_task);
 
-const size_t NUM_TASKS = 8;
+const size_t NUM_TASKS = 9;
 
 std::array<SchedulerTask *, NUM_TASKS> tasks = {
     &imu_task,
@@ -45,9 +42,8 @@ std::array<SchedulerTask *, NUM_TASKS> tasks = {
     &position_tracking_task,
     &lidar_processing_task,
     &mapping_task,
-    // &motion_control_task,
+    &motion_control_task,
     // &user_command_task,
-    // &lidar_processing_task,
     // &autonomous_command_task,
 };
 

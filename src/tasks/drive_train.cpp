@@ -32,8 +32,12 @@ static float apply_kickoff(float command) {
 }
 
 void DriveTrainTask::loop() {
-    this->left_command = std::clamp(this->left_command, -1.0f, 1.0f);
-    this->right_command = std::clamp(this->right_command, -1.0f, 1.0f);
+    std::tuple<float, float> new_commands;
+
+    if (xQueueReceive(motionControl_ChassisCommandsQueue, &new_commands, 0)) {
+        this->left_command = std::clamp(std::get<0>(new_commands), -1.0f, 1.0f);
+        this->right_command = std::clamp(std::get<1>(new_commands), -1.0f, 1.0f);
+    }
 
     float left_out = this->left_command;
     float right_out = this->right_command;
