@@ -25,34 +25,47 @@ void PositionTrackingTask::setup() {
 }
 
 void PositionTrackingTask::loop() {
-    std::tuple<float, float> wheel_positions;
+    // Odometry can be run at a faster rate than position resampling
+    while (uxQueueMessagesWaiting(lidarReader_PositionTrackingScanQueue) == 0) {
+        std::tuple<float, float> wheel_positions;
 
-    xQueueReceive(driveTrain_positionTrackingWheelPositionQueue, &wheel_positions, portMAX_DELAY);
+        xQueueReceive(driveTrain_positionTrackingWheelPositionQueue, &wheel_positions,
+                      portMAX_DELAY);
 
-    auto [left_wheel_position, right_wheel_position] = wheel_positions;
+        auto [left_wheel_position, right_wheel_position] = wheel_positions;
 
-    float left_change = left_wheel_position - this->last_left_wheel_position;
-    float right_change = right_wheel_position - this->last_right_wheel_position;
+        float left_change = left_wheel_position - this->last_left_wheel_position;
+        float right_change = right_wheel_position - this->last_right_wheel_position;
 
-    float wheel_travels[2] = {left_change * WHEEL_RADIUS_MM, right_change * WHEEL_RADIUS_MM};
+        float wheel_travels[2] = {left_change * WHEEL_RADIUS_MM, right_change * WHEEL_RADIUS_MM};
 
-    float current_heading;
+        float current_heading;
 
-    xQueueReceive(imu_positionTrackingHeadingQueue, &current_heading, portMAX_DELAY);
+        xQueueReceive(imu_positionTrackingHeadingQueue, &current_heading, portMAX_DELAY);
 
-    float heading_change = diff_angle(last_heading, current_heading);
+        float heading_change = diff_angle(last_heading, current_heading);
 
-    Eigen::Vector2f robot_travel =
-        this->odometry.compute_travel(wheel_travels, heading_change) * 1e-3;
+        Eigen::Vector2f robot_travel =
+            this->odometry.compute_travel(wheel_travels, heading_change) * 1e-3;
 
-    this->mcl.predict(robot_travel, heading_change);
-    // this->mcl.update_beam_model(this->lidar_task->get_points());
+        this->mcl.predict(robot_travel, heading_change);
+
+        this->last_left_wheel_position = left_wheel_position;
+        this->last_right_wheel_position = right_wheel_position;
+        this->last_heading = current_heading;
+
+        set_global_pose(this->mcl.get_estimated_pose());
+    }
+
+    LidarScanPayload payload;
+    xQueueReceive(lidarReader_PositionTrackingScanQueue, &payload, portMAX_DELAY);
+
+    etl::vector<LidarResponsePoint, MAX_LIDAR_POINTS> points;
+    points.assign(payload.points, payload.points + payload.count);
+
+    this->mcl.update_beam_model(points);
 
     auto current_pose = this->mcl.get_estimated_pose();
-
-    this->last_left_wheel_position = left_wheel_position;
-    this->last_right_wheel_position = right_wheel_position;
-    this->last_heading = current_heading;
 
     telemetry::publish_f32(telemetry::KEY_HEADING, current_pose.heading);
     telemetry::publish_f32(telemetry::KEY_POSITION_X, current_pose.position.x());

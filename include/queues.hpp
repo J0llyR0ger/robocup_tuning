@@ -13,3 +13,6 @@ struct LidarScanPayload {
 
 inline QueueHandle_t lidarReader_lidarProcessingScanQueue =
     xQueueCreate(1, sizeof(LidarScanPayload));
+
+inline QueueHandle_t lidarReader_PositionTrackingScanQueue =
+    xQueueCreate(1, sizeof(LidarScanPayload));

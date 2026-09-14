@@ -24,5 +24,7 @@ class PositionTrackingTask : public SchedulerTask {
     void setup();
     void loop();
 
+    uint32_t get_stack_depth() const override { return 1 << 13; };
+
     int get_frequency() const override { return POSITION_TRACKING_TASK_FREQ; }
 };

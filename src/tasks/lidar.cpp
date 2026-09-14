@@ -122,6 +122,7 @@ void LidarTask::loop() {
                             memcpy(payload.points, this->points.data(),
                                    payload.count * sizeof(LidarResponsePoint));
                             xQueueSendToFront(lidarReader_lidarProcessingScanQueue, &payload, 0);
+                            xQueueSendToFront(lidarReader_PositionTrackingScanQueue, &payload, 0);
                         }
                     }
                 }
