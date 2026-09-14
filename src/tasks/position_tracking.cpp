@@ -21,7 +21,7 @@ void PositionTrackingTask::setup() {
     Pose initial_pose = {.position = Eigen::Vector2f(INITIAL_X, INITIAL_Y),
                          .heading = INITIAL_HEADING};
 
-    this->mcl.set_initial_pose(initial_pose, 0.06f, 0.05f);
+    this->mcl.set_initial_pose(initial_pose, INITIAL_POSITION_NOISE, INITIAL_HEADING_NOISE);
 }
 
 void PositionTrackingTask::loop() {

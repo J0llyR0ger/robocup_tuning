@@ -11,7 +11,7 @@ MonteCarloLocalization::MonteCarloLocalization(const FieldMap &field_map) : fiel
             .position = Eigen::Vector2f::Zero(),
             .heading = 0.0f,
         },
-        0.10f, 0.08f);
+        INITIAL_POSITION_NOISE, INITIAL_HEADING_NOISE);
 }
 
 void MonteCarloLocalization::set_field_map(const FieldMap &field_map) {
@@ -37,11 +37,10 @@ void MonteCarloLocalization::set_initial_pose(const Pose &pose, float position_s
 void MonteCarloLocalization::predict(const Eigen::Vector2f &robot_travel, float heading_change) {
     float travel_distance = robot_travel.norm();
 
-    float position_sigma =
-        std::max(0.003f, POSITION_NOISE_PER_METER * std::max(travel_distance, 0.02f));
+    float position_sigma = std::max(MIN_POSITION_NOISE, POSITION_NOISE_PER_METER * travel_distance);
 
     float heading_sigma =
-        std::max(0.002f, HEADING_NOISE_PER_RADIAN * std::max(fabsf(heading_change), 0.01f));
+        std::max(MIN_HEADING_NOISE, HEADING_NOISE_PER_RADIAN * fabsf(heading_change));
 
     for (size_t i = 0; i < this->particles.size(); i++) {
         Eigen::Vector2f noisy_travel =
