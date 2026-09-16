@@ -26,7 +26,7 @@ void MotionControlTask::loop() {
 
     auto pose = get_global_pose();
 
-    auto [drive_error, turn_error] = pure_pursuit.compute_errors(pose);
+    auto [drive_error, turn_error] = pure_pursuit.compute_errors(pose.get_center_pose());
 
     telemetry::publish_f32(telemetry::KEY_TURN_ERROR, turn_error);
     telemetry::publish_f32(telemetry::KEY_DRIVE_ERROR, drive_error);

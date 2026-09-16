@@ -8,7 +8,7 @@ AutonomousCommandTask::AutonomousCommandTask() : SchedulerTask("autonomous_comma
 void AutonomousCommandTask::setup() {}
 
 void AutonomousCommandTask::loop() {
-    auto robot_position = get_global_pose().position;
+    auto robot_position = get_global_pose().get_center_pose().position;
 
     WeightTrackingPayload weight_targets;
 
