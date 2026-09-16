@@ -1,5 +1,6 @@
 #pragma once
 
+#undef B1
 #include "Eigen/Geometry"
 #include "lidar_processing.hpp"
 

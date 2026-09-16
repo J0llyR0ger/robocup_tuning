@@ -1,4 +1,7 @@
+#pragma once
+
 #include "lib/lidar.hpp"
+#include "lib/weight_tracking.hpp"
 #include <FreeRTOS.h>
 #include <queue.h>
 
@@ -25,3 +28,17 @@ inline QueueHandle_t lidarReader_MappingScanQueue = xQueueCreate(1, sizeof(Lidar
 
 inline QueueHandle_t motionControl_ChassisCommandsQueue =
     xQueueCreate(1, sizeof(std::tuple<float, float>));
+
+// Weight Scans
+struct WeightTrackingPayload {
+    WeightTrackedTarget targets[WEIGHT_TARGET_MAX_TRACKS];
+    size_t count;
+};
+
+inline QueueHandle_t weight_tracking_queue = xQueueCreate(1, sizeof(WeightTrackingPayload));
+
+// Intake
+
+inline QueueHandle_t carried_weight_count = xQueueCreate(1, sizeof(uint8_t));
+
+inline QueueHandle_t intake_position_queue = xQueueCreate(1, sizeof(bool));

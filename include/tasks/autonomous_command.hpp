@@ -9,19 +9,10 @@
 
 class AutonomousCommandTask : public SchedulerTask {
   private:
-    LidarProcessingTask *lidar_processing_task;
-    PositionTrackingTask *position_tracking_task;
-    MotionControlTask *motion_control_task;
-    IntakeTask *intake_task;
-    MappingTask *mapping_task;
-
     std::optional<Eigen::Vector2f> locked_weight_target = std::nullopt;
 
   public:
-    AutonomousCommandTask(LidarProcessingTask *lidar_processing_task,
-                          PositionTrackingTask *position_tracking_task,
-                          MotionControlTask *motion_control_task, IntakeTask *intake_task,
-                          MappingTask *mapping_task);
+    AutonomousCommandTask();
 
     void setup();
     void loop();

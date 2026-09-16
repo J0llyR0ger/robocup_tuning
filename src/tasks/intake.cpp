@@ -1,6 +1,7 @@
 #include "tasks/intake.hpp"
 #include "Arduino.h"
 #include <mutexes.hpp>
+#include <queues.hpp>
 
 IntakeTask::IntakeTask() : SchedulerTask("intake_task") {}
 
@@ -77,6 +78,12 @@ void IntakeTask::loop() {
 
     uint16_t pins = readPins();
 
+    bool intake_command;
+
+    if (xQueueReceive(intake_position_queue, &intake_command, 0)) {
+        set_position(intake_command);
+    }
+
     bool conduction_state = (pins & (1 << ENTRY_CONDUCTION_PIN)) == 0;
     bool switch_state = (pins & (1 << ENTRY_SWITCH_PIN)) == 0;
 
@@ -107,4 +114,6 @@ void IntakeTask::loop() {
         }
         break;
     }
+
+    xQueueOverwrite(carried_weight_count, &this->total_weights);
 }

@@ -21,13 +21,11 @@ class IntakeTask : public SchedulerTask {
     HerkulexServo left_servo = HerkulexServo(herkulexBus, 3);
     HerkulexServo right_servo = HerkulexServo(herkulexBus, 2);
 
-    unsigned long last_update = 0;
-    unsigned long now = 0;
-    bool toggle = false;
-
     SX1509 expander;
 
     WeightIntakeState weight_intake_state = WeightIntakeState::None;
+
+    void set_position(bool up);
 
   public:
     int total_weights = 0;
@@ -36,8 +34,6 @@ class IntakeTask : public SchedulerTask {
 
     void setup();
     void loop();
-
-    void set_position(bool up);
 
     int get_frequency() const override { return INTAKE_TASK_FREQ; }
 };
