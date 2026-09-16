@@ -26,9 +26,9 @@ void MappingTask::loop() {
     this->occupancy_graph = OccupancyGridGraph(this->occupancy_grid);
 
     auto discovery_path = get_path_between_world_points(
-        pose.get_center_pose().position, {FIELD_WIDTH_X_METERS / 2.0, FIELD_HEIGHT_Y_METERS / 2.0});
+        pose.position, {FIELD_WIDTH_X_METERS / 2.0, FIELD_HEIGHT_Y_METERS / 2.0});
 
-    auto home_path = get_path_between_world_points(pose.get_center_pose().position, {0.5, 0.5});
+    auto home_path = get_path_between_world_points(pose.position, {0.5, 0.5});
 
     telemetry::publish_occupancy_grid(this->occupancy_grid);
     telemetry::publish_grid_path(discovery_path);
