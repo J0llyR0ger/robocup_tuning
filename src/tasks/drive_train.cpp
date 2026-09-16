@@ -10,7 +10,7 @@ void DriveTrainTask::setup() {
     right_motor.attach(RIGHT_MOTOR_CONTROL_PIN);
 }
 
-static const int TICKS_PER_REVOLUTION = 2985;
+static const int TICKS_PER_REVOLUTION = 2652;
 static const int FORWARD_MS = 1950;
 static const int REVERSE_MS = 1050;
 
