@@ -11,7 +11,7 @@
 #define TURN_KD 0 // 16e-1
 
 MotionControlTask::MotionControlTask()
-    : SchedulerTask("motion_control"), pure_pursuit(0.3),
+    : SchedulerTask("motion_control"), pure_pursuit(0.6),
       pid_drive(PIDController(DRIVE_KP, DRIVE_KI, 0, 10)
                     .with_output_limits(-0.5, 0.5)
                     .with_integral_bounds(-100, 100)),

@@ -7,7 +7,7 @@
 #include <Encoder.h>
 #include <Servo.h>
 
-const float SLEW_RATE = 8.0;
+const float SLEW_RATE = 4.0;
 
 class DriveTrainTask : public SchedulerTask {
   private:

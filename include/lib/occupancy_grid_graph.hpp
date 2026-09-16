@@ -23,7 +23,7 @@ class OccupancyGridGraph {
         (2 * MAX_INFLATION_RADIUS + 1) * (2 * MAX_INFLATION_RADIUS + 1);
 
     explicit OccupancyGridGraph(const OccupancyGridMap &grid, uint8_t blockThreshold = 220,
-                                float costWeight = 4.0f, int inflationRadius = 4,
+                                float costWeight = 4.0f, int inflationRadius = 6,
                                 float inflationWeight = 6.0f);
 
     static constexpr uint16_t idx(size_t x, size_t y) {

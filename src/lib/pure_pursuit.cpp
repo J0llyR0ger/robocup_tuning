@@ -4,7 +4,7 @@
 
 using Eigen::Vector2f;
 
-const float TURN_DEADZONE = 0.01; // TODO: Tune this
+const float TURN_DEADZONE = 0.2; // TODO: Tune this
 
 PurePursuit::PurePursuit(float look_ahead_distance) : look_ahead_distance(look_ahead_distance) {}
 
