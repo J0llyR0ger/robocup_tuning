@@ -45,8 +45,8 @@ void IntakeTask::set_position(bool up) {
         left_servo.setPosition(angleToNum(-5.0), 25, HerkulexLed::Green);
         right_servo.setPosition(angleToNum(25.0), 25, HerkulexLed::Green);
     } else {
-        left_servo.setPosition(angleToNum(45.0), 25, HerkulexLed::Blue);
-        right_servo.setPosition(angleToNum(-25.0), 25, HerkulexLed::Blue);
+        left_servo.setPosition(angleToNum(45.0), 5, HerkulexLed::Blue);
+        right_servo.setPosition(angleToNum(-25.0), 5, HerkulexLed::Blue);
     }
 }
 
@@ -100,8 +100,12 @@ void IntakeTask::loop() {
         } else if (conduction_state) {
             weight_intake_state = WeightIntakeState::RealWeightDetected;
             total_weights++;
+            bool val = true;
+            xQueueSend(intake_entry_queue, &val, 0);
         } else if (!conduction_state) {
             weight_intake_state = WeightIntakeState::DummyWeightDetected;
+            bool val = false;
+            xQueueSend(intake_entry_queue, &val, 0);
             total_weights++;
         }
 

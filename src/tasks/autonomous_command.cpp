@@ -8,7 +8,7 @@ AutonomousCommandTask::AutonomousCommandTask() : SchedulerTask("autonomous_comma
 void AutonomousCommandTask::setup() {}
 
 void AutonomousCommandTask::loop() {
-    auto robot_position = get_global_pose().position;
+    auto robot_pose = get_global_pose();
 
     WeightTrackingPayload weight_targets;
 
@@ -23,7 +23,7 @@ void AutonomousCommandTask::loop() {
             continue;
         }
 
-        auto dist = (track.cluster.centroid - robot_position).norm();
+        auto dist = (track.cluster.centroid - robot_pose.position).norm();
 
         if (dist < closest_weight_distance) {
             closest_weight_distance = dist;
@@ -35,29 +35,39 @@ void AutonomousCommandTask::loop() {
 
     xQueuePeek(carried_weight_count, &total_weights_carried, portMAX_DELAY);
 
-    if (total_weights_carried >= 4 && !this->locked_weight_target.has_value()) {
-        set_motion_control_path(get_home_path());
-    } else if (this->locked_weight_target.has_value()) {
-        auto drive_target = this->locked_weight_target.value();
+    bool is_real;
 
-        set_motion_control_path({robot_position, drive_target});
+    if (total_weights_carried >= 4 && !this->weight_sensed_pose.has_value()) {
+        set_motion_control_path({get_home_path(), 1.0});
+    } else if (this->weight_sensed_pose.has_value()) {
+        auto sensed_pose = this->weight_sensed_pose.value();
 
-        if ((drive_target - robot_position).norm() < 0.15) {
-            this->locked_weight_target = std::nullopt;
-            bool sendVal = true;
-            xQueueOverwrite(intake_position_queue, &sendVal);
+        set_motion_control_path(
+            {{sensed_pose.position + sensed_pose.get_direction_vector() * 1.0}, 0.3});
+
+        if ((sensed_pose.position - robot_pose.position).norm() > 0.2) {
+            this->weight_sensed_pose = std::nullopt;
+            // TODO: Track total weight counting from here
         }
+    } else if (xQueueReceive(intake_entry_queue, &is_real, 0)) {
+        this->weight_sensed_pose = robot_pose;
+        bool sendVal = false;
+        xQueueOverwrite(intake_position_queue, &sendVal);
+        // Todo: ignore fake weights
+
     } else if (best_track_index >= 0) {
         const auto &best_track = weight_targets.targets[best_track_index];
 
-        set_motion_control_path({robot_position, best_track.cluster.centroid});
+        float speed = 1.0;
 
         if (closest_weight_distance < 0.7) {
-            this->locked_weight_target = best_track.cluster.centroid;
-            bool sendVal = false;
-            xQueueOverwrite(intake_position_queue, &sendVal);
+            speed = map(closest_weight_distance, 0.7, 0.4, 1.0, 0.3);
         }
+
+        if (closest_weight_distance < 0.7)
+
+            set_motion_control_path({{best_track.cluster.centroid}, speed});
     } else {
-        set_motion_control_path(get_discovery_path());
+        set_motion_control_path({get_discovery_path(), 1.0});
     }
 }

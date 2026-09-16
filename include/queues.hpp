@@ -42,3 +42,6 @@ inline QueueHandle_t weight_tracking_queue = xQueueCreate(1, sizeof(WeightTracki
 inline QueueHandle_t carried_weight_count = xQueueCreate(1, sizeof(uint8_t));
 
 inline QueueHandle_t intake_position_queue = xQueueCreate(1, sizeof(bool));
+
+// True means rule, false means dummy
+inline QueueHandle_t intake_entry_queue = xQueueCreate(10, sizeof(bool));

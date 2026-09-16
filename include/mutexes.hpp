@@ -12,10 +12,15 @@ void setupMutexes();
 Pose get_global_pose();
 void set_global_pose(Pose pose);
 
-std::vector<Eigen::Vector2f> get_motion_control_path();
-void set_motion_control_path(std::vector<Eigen::Vector2f> path);
+struct MotionControlPath {
+    std::vector<Eigen::Vector2f> path;
+    float speed;
+};
+
+MotionControlPath get_motion_control_path();
+void set_motion_control_path(MotionControlPath path);
 inline SemaphoreHandle_t motionControlPathMutex = nullptr;
-static inline std::vector<Eigen::Vector2f> motionControlPath;
+static inline MotionControlPath motionControlPath;
 
 std::vector<Eigen::Vector2f> get_discovery_path();
 void set_discovery_path(std::vector<Eigen::Vector2f> path);

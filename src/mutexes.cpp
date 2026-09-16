@@ -26,17 +26,17 @@ void set_global_pose(Pose pose) {
     xSemaphoreGive(globalPoseMutex);
 }
 
-std::vector<Eigen::Vector2f> get_motion_control_path() {
+MotionControlPath get_motion_control_path() {
     xSemaphoreTake(motionControlPathMutex, portMAX_DELAY);
 
-    std::vector<Eigen::Vector2f> path = motionControlPath;
+    MotionControlPath path = motionControlPath;
 
     xSemaphoreGive(motionControlPathMutex);
 
     return path;
 }
 
-void set_motion_control_path(std::vector<Eigen::Vector2f> path) {
+void set_motion_control_path(MotionControlPath path) {
     xSemaphoreTake(motionControlPathMutex, portMAX_DELAY);
 
     motionControlPath = path;

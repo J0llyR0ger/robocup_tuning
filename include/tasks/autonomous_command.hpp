@@ -9,7 +9,7 @@
 
 class AutonomousCommandTask : public SchedulerTask {
   private:
-    std::optional<Eigen::Vector2f> locked_weight_target = std::nullopt;
+    std::optional<Pose> weight_sensed_pose = std::nullopt;
 
   public:
     AutonomousCommandTask();

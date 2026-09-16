@@ -8,7 +8,7 @@
 
 #define TURN_KP 1.0
 #define TURN_KI 0
-#define TURN_KD 0 // 16e-1
+#define TURN_KD 30e-2
 
 MotionControlTask::MotionControlTask()
     : SchedulerTask("motion_control"), pure_pursuit(0.6),
@@ -22,7 +22,8 @@ MotionControlTask::MotionControlTask()
 void MotionControlTask::setup() {}
 
 void MotionControlTask::loop() {
-    this->pure_pursuit.set_current_path(get_motion_control_path());
+    auto path = get_motion_control_path();
+    this->pure_pursuit.set_current_path(path.path);
 
     auto pose = get_global_pose();
 
@@ -31,7 +32,7 @@ void MotionControlTask::loop() {
     telemetry::publish_f32(telemetry::KEY_TURN_ERROR, turn_error);
     telemetry::publish_f32(telemetry::KEY_DRIVE_ERROR, drive_error);
 
-    float drive_output = pid_drive.update(drive_error);
+    float drive_output = pid_drive.update(drive_error) * path.speed;
     float turn_output = pid_turn.update(turn_error);
 
     float left_drive = drive_output + turn_output;
