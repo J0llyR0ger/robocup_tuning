@@ -3,6 +3,9 @@
 void setupMutexes() {
     i2cMutex = xSemaphoreCreateMutex();
     globalPoseMutex = xSemaphoreCreateMutex();
+    motionControlPathMutex = xSemaphoreCreateMutex();
+    discoveryPathMutex = xSemaphoreCreateMutex();
+    homePathMutex = xSemaphoreCreateMutex();
 }
 
 Pose get_global_pose() {
@@ -21,4 +24,58 @@ void set_global_pose(Pose pose) {
     globalPose = pose;
 
     xSemaphoreGive(globalPoseMutex);
+}
+
+std::vector<Eigen::Vector2f> get_motion_control_path() {
+    xSemaphoreTake(motionControlPathMutex, portMAX_DELAY);
+
+    std::vector<Eigen::Vector2f> path = motionControlPath;
+
+    xSemaphoreGive(motionControlPathMutex);
+
+    return path;
+}
+
+void set_motion_control_path(std::vector<Eigen::Vector2f> path) {
+    xSemaphoreTake(motionControlPathMutex, portMAX_DELAY);
+
+    motionControlPath = path;
+
+    xSemaphoreGive(motionControlPathMutex);
+}
+
+std::vector<Eigen::Vector2f> get_discovery_path() {
+    xSemaphoreTake(discoveryPathMutex, portMAX_DELAY);
+
+    std::vector<Eigen::Vector2f> path = discoveryPath;
+
+    xSemaphoreGive(discoveryPathMutex);
+
+    return path;
+}
+
+void set_discovery_path(std::vector<Eigen::Vector2f> path) {
+    xSemaphoreTake(discoveryPathMutex, portMAX_DELAY);
+
+    discoveryPath = path;
+
+    xSemaphoreGive(discoveryPathMutex);
+}
+
+std::vector<Eigen::Vector2f> get_home_path() {
+    xSemaphoreTake(homePathMutex, portMAX_DELAY);
+
+    std::vector<Eigen::Vector2f> path = homePath;
+
+    xSemaphoreGive(homePathMutex);
+
+    return path;
+}
+
+void set_home_path(std::vector<Eigen::Vector2f> path) {
+    xSemaphoreTake(homePathMutex, portMAX_DELAY);
+
+    homePath = path;
+
+    xSemaphoreGive(homePathMutex);
 }

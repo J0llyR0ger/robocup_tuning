@@ -36,11 +36,11 @@ void AutonomousCommandTask::loop() {
     xQueuePeek(carried_weight_count, &total_weights_carried, portMAX_DELAY);
 
     if (total_weights_carried >= 4 && !this->locked_weight_target.has_value()) {
-        // this->motion_control_task->set_current_path(this->mapping_task->get_home_path());
+        set_motion_control_path(get_home_path());
     } else if (this->locked_weight_target.has_value()) {
         auto drive_target = this->locked_weight_target.value();
 
-        // this->motion_control_task->set_current_path({robot_position, drive_target});
+        set_motion_control_path({robot_position, drive_target});
 
         if ((drive_target - robot_position).norm() < 0.15) {
             this->locked_weight_target = std::nullopt;
@@ -50,8 +50,7 @@ void AutonomousCommandTask::loop() {
     } else if (best_track_index >= 0) {
         const auto &best_track = weight_targets.targets[best_track_index];
 
-        // this->motion_control_task->set_current_path({robot_position,
-        // best_track.cluster.centroid});
+        set_motion_control_path({robot_position, best_track.cluster.centroid});
 
         if (closest_weight_distance < 0.7) {
             this->locked_weight_target = best_track.cluster.centroid;
@@ -59,6 +58,6 @@ void AutonomousCommandTask::loop() {
             xQueueOverwrite(intake_position_queue, &sendVal);
         }
     } else {
-        // this->motion_control_task->set_current_path(this->mapping_task->get_discovery_path());
+        set_motion_control_path(get_discovery_path());
     }
 }

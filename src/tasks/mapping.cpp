@@ -25,30 +25,17 @@ void MappingTask::loop() {
 
     this->occupancy_graph = OccupancyGridGraph(this->occupancy_grid);
 
-    int startX, startY;
-
-    this->occupancy_grid.world_to_grid(pose.position, startX, startY);
-
-    int goalX, goalY;
-    this->occupancy_grid.world_to_grid({FIELD_WIDTH_X_METERS / 2.0, FIELD_HEIGHT_Y_METERS / 2.0},
-                                       goalX, goalY);
-
-    OctileHeuristic heuristic(goalX, goalY);
-
-    auto path = aStarSearch(this->occupancy_graph, OccupancyGridGraph::idx(startX, startY),
-                            OccupancyGridGraph::idx(goalX, goalY), heuristic);
-
-    this->discovery_path = get_path_between_world_points(
+    auto discovery_path = get_path_between_world_points(
         pose.position, {FIELD_WIDTH_X_METERS / 2.0, FIELD_HEIGHT_Y_METERS / 2.0});
 
-    this->home_path = get_path_between_world_points(pose.position, {0.5, 0.5});
+    auto home_path = get_path_between_world_points(pose.position, {0.5, 0.5});
 
     telemetry::publish_occupancy_grid(this->occupancy_grid);
-    telemetry::publish_grid_path(this->discovery_path);
-}
+    telemetry::publish_grid_path(discovery_path);
 
-std::vector<Eigen::Vector2f> MappingTask::get_discovery_path() { return this->discovery_path; }
-std::vector<Eigen::Vector2f> MappingTask::get_home_path() { return this->home_path; }
+    set_discovery_path(discovery_path);
+    set_home_path(home_path);
+}
 
 const OccupancyGridMap &MappingTask::get_occupancy_grid() const { return this->occupancy_grid; }
 

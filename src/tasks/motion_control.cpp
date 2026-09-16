@@ -19,9 +19,11 @@ MotionControlTask::MotionControlTask()
                    .with_output_limits(-2.0, 2.0)
                    .with_integral_bounds(-30 * DEG_TO_RAD, 30 * DEG_TO_RAD)) {}
 
-void MotionControlTask::setup() { this->pure_pursuit.set_current_path({{0, 0}, {1, 1}}); }
+void MotionControlTask::setup() {}
 
 void MotionControlTask::loop() {
+    this->pure_pursuit.set_current_path(get_motion_control_path());
+
     auto pose = get_global_pose();
 
     auto [drive_error, turn_error] = pure_pursuit.compute_errors(pose);

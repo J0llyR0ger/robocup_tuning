@@ -12,11 +12,10 @@ class MappingTask : public SchedulerTask {
     OccupancyGridMap occupancy_grid = OccupancyGridMap();
     OccupancyGridGraph occupancy_graph = OccupancyGridGraph(occupancy_grid);
 
-    std::vector<Eigen::Vector2f> discovery_path;
-    std::vector<Eigen::Vector2f> home_path;
-
     std::vector<Eigen::Vector2f> get_path_between_world_points(Eigen::Vector2f start,
                                                                Eigen::Vector2f end);
+
+    const OccupancyGridMap &get_occupancy_grid() const;
 
   public:
     MappingTask();
@@ -26,10 +25,5 @@ class MappingTask : public SchedulerTask {
 
     int get_frequency() const override { return MAPPING_TASK_FREQ; }
 
-    std::vector<Eigen::Vector2f> get_discovery_path();
-    std::vector<Eigen::Vector2f> get_home_path();
-
     uint32_t get_stack_depth() const override { return 1024 * 20; };
-
-    const OccupancyGridMap &get_occupancy_grid() const;
 };
