@@ -49,8 +49,11 @@ void DriveTrainTask::loop() {
     left_out = apply_kickoff(left_out);
     right_out = apply_kickoff(right_out);
 
-    left_motor.writeMicroseconds(map(left_out, 1.0, -1.0, FORWARD_MS, REVERSE_MS));
-    right_motor.writeMicroseconds(map(right_out, 1.0, -1.0, REVERSE_MS, FORWARD_MS));
+    float left_rate = this->left_slew.update(left_out);
+    float right_rate = this->right_slew.update(right_out);
+
+    left_motor.writeMicroseconds(map(left_rate, 1.0, -1.0, FORWARD_MS, REVERSE_MS));
+    right_motor.writeMicroseconds(map(right_rate, 1.0, -1.0, REVERSE_MS, FORWARD_MS));
 
     telemetry::publish_f32(telemetry::KEY_LEFT_COMMAND, this->left_command);
     telemetry::publish_f32(telemetry::KEY_RIGHT_COMMAND, this->right_command);

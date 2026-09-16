@@ -1,10 +1,13 @@
 #pragma once
 
 #include "config.hpp"
+#include "lib/slew.hpp"
 #include "scheduler_task.hpp"
 
 #include <Encoder.h>
 #include <Servo.h>
+
+const float SLEW_RATE = 8.0;
 
 class DriveTrainTask : public SchedulerTask {
   private:
@@ -21,6 +24,9 @@ class DriveTrainTask : public SchedulerTask {
 
     float left_command = 0.0;
     float right_command = 0.0;
+
+    SlewRate<float> left_slew = SlewRate<float>(SLEW_RATE);
+    SlewRate<float> right_slew = SlewRate<float>(SLEW_RATE);
 
   public:
     DriveTrainTask();

@@ -6,9 +6,9 @@
 #define DRIVE_KP 35e-1
 #define DRIVE_KI 0 // 20e-4
 
-#define TURN_KP 2.0
+#define TURN_KP 1.0
 #define TURN_KI 0
-#define TURN_KD 16e-1
+#define TURN_KD 0 // 16e-1
 
 MotionControlTask::MotionControlTask()
     : SchedulerTask("motion_control"), pure_pursuit(0.3),
