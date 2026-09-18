@@ -25,19 +25,25 @@ LidarResponsePoint to_robot_frame(const LidarResponsePoint &point) {
     };
 }
 
-void upsert_point_by_angle(etl::vector<LidarResponsePoint, MAX_LIDAR_POINTS> &points,
-                           const LidarResponsePoint &new_point) {
+void LidarTask::upsert_point(const LidarResponsePoint &new_point) {
     if (points.full()) {
         points.erase(points.begin());
     }
 
     points.push_back(new_point);
 
-    if (points.size() >= 3 &&
-        diff_angle(points[points.size() - 1].angle, points[points.size() - 2].angle) >
-            diff_angle(points[points.size() - 1].angle, points[0].angle)) {
-        points.erase(points.begin());
+    float angle_change = 0;
+
+    if (points.size() >= 2) {
+        angle_change = diff_angle(points[points.size() - 1].angle, points[points.size() - 2].angle);
     }
+
+    if (cummulative_angle + angle_change > last_loop_cummulative_angle + 2.0 * std::numbers::pi) {
+        points.erase(points.begin());
+        last_loop_cummulative_angle = cummulative_angle + angle_change - 2.0 * std::numbers::pi;
+    };
+
+    cummulative_angle += angle_change;
 }
 
 float wrap_angle_positive(float angle) {
@@ -107,7 +113,7 @@ void LidarTask::loop() {
                         }
 
                         LidarResponsePoint corrected = to_robot_frame(point);
-                        upsert_point_by_angle(this->points, corrected);
+                        upsert_point(corrected);
 
                         // Send the scan when the start of the scan crosses the positive X axis
                         if (this->points.size() >= 2 &&

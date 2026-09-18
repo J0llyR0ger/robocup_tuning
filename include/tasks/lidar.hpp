@@ -12,6 +12,11 @@ class LidarTask : public SchedulerTask {
 
     etl::vector<LidarResponsePoint, MAX_LIDAR_POINTS> points;
 
+    void upsert_point(const LidarResponsePoint &new_point);
+
+    float cummulative_angle = 0.0;
+    float last_loop_cummulative_angle = 0.0;
+
   public:
     LidarTask();
 
