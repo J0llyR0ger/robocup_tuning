@@ -10,11 +10,11 @@ void AutonomousCommandTask::setup() {}
 void AutonomousCommandTask::loop() {
     auto robot_pose = get_global_pose();
 
+    Eigen::Vector2f locking_center = robot_pose.position + robot_pose.get_direction_vector() * 0.5;
+
     WeightTrackingPayload weight_targets;
 
-    if (!xQueuePeek(weight_tracking_queue, &weight_targets, portMAX_DELAY)) {
-        return;
-    }
+    xQueuePeek(weight_tracking_queue, &weight_targets, portMAX_DELAY);
 
     int best_track_index = -1;
     float closest_weight_distance = 5.0;
@@ -61,8 +61,7 @@ void AutonomousCommandTask::loop() {
         // Todo: ignore fake weights
 
     } else if (this->locked_weight_position.has_value()) {
-        if (closest_weight_distance <
-            (this->locked_weight_position.value() - robot_pose.position).norm()) {
+        if ((this->locked_weight_position.value() - locking_center).norm() > 0.3) {
             this->locked_weight_position = std::nullopt;
         } else {
             set_motion_control_path({{this->locked_weight_position.value()}, 1.0});
@@ -73,7 +72,7 @@ void AutonomousCommandTask::loop() {
 
         float speed = 1.0;
 
-        if (closest_weight_distance < 0.5) {
+        if ((best_track - locking_center).norm() < 0.3) {
             this->locked_weight_position = best_track;
             intake_position = false;
         } else {

@@ -17,8 +17,8 @@ class OccupancyGridMap {
     static constexpr size_t GRID_HEIGHT = FIELD_HEIGHT_Y_METERS / TILE_SIZE_METERS;
 
     static constexpr uint8_t UNKNOWN_SCORE = 127;
-    static constexpr uint8_t FREE_DECREMENT = 2;
-    static constexpr uint8_t OCCUPIED_INCREMENT = 8;
+    static constexpr uint8_t FREE_DECREMENT = 4;
+    static constexpr uint8_t OCCUPIED_INCREMENT = 16;
 
     static constexpr size_t MIN_FRONTIER_CLUSTER_SIZE = 4;
     static constexpr uint8_t WEIGHT_CLUSTER_OCCUPIED_THRESHOLD = 200;
