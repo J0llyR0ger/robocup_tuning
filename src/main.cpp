@@ -20,26 +20,18 @@ static TelemetryTask telemetry_task = TelemetryTask();
 static LidarTask lidar_task = LidarTask();
 static DriveTrainTask drive_train_task = DriveTrainTask();
 static PositionTrackingTask position_tracking_task = PositionTrackingTask();
-static LidarProcessingTask lidar_processing_task = LidarProcessingTask();
 
 static MappingTask mapping_task = MappingTask();
 static MotionControlTask motion_control_task = MotionControlTask();
 
 static AutonomousCommandTask autonomous_command_task = AutonomousCommandTask();
 
-const size_t NUM_TASKS = 10;
+const size_t NUM_TASKS = 9;
 
 std::array<SchedulerTask *, NUM_TASKS> tasks = {
-    &imu_task,
-    &intake_task,
-    &telemetry_task,
-    &lidar_task,
-    &drive_train_task,
-    &position_tracking_task,
-    &lidar_processing_task,
-    &mapping_task,
-    &motion_control_task,
-    &autonomous_command_task,
+    &imu_task,     &intake_task,         &telemetry_task,
+    &lidar_task,   &drive_train_task,    &position_tracking_task,
+    &mapping_task, &motion_control_task, &autonomous_command_task,
 };
 
 /// Rate-monotonic priority assignment: tasks with higher frequencies get

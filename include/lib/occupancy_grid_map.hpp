@@ -21,6 +21,9 @@ class OccupancyGridMap {
     static constexpr uint8_t OCCUPIED_INCREMENT = 8;
 
     static constexpr size_t MIN_FRONTIER_CLUSTER_SIZE = 4;
+    static constexpr uint8_t WEIGHT_CLUSTER_OCCUPIED_THRESHOLD = 200;
+    static constexpr size_t MAX_WEIGHT_CLUSTER_SIZE = 4;
+    static constexpr int WEIGHT_CLUSTER_CLEAR_RADIUS = 2;
 
     struct FrontierCell {
         int x = 0;
@@ -32,6 +35,8 @@ class OccupancyGridMap {
         Eigen::Vector2f centroid{0.0f, 0.0f};
         size_t cell_count() const { return this->cells.size(); }
     };
+
+    using WeightCluster = FrontierCluster;
 
     OccupancyGridMap();
 
@@ -54,14 +59,19 @@ class OccupancyGridMap {
     std::vector<Eigen::Vector2f> get_frontier_points() const;
     std::vector<Eigen::Vector2f> get_frontier_centroids() const;
 
+    const std::vector<WeightCluster> &get_weight_clusters() const;
+    std::vector<WeightCluster> find_weight_clusters() const;
+
   private:
     std::array<uint8_t, GRID_WIDTH * GRID_HEIGHT> scores;
     std::vector<FrontierCluster> frontier_clusters;
+    std::vector<WeightCluster> weight_clusters;
 
     static size_t to_index(size_t x, size_t y);
 
     void apply_beam(const Eigen::Vector2f &origin_world, const Eigen::Vector2f &hit_world);
     void update_frontiers();
+    void update_weight_clusters();
 
     void increase_cell(int grid_x, int grid_y);
     void decrease_cell(int grid_x, int grid_y);

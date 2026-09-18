@@ -24,6 +24,15 @@ void MappingTask::loop() {
     points.assign(payload.points, payload.points + payload.count);
 
     this->occupancy_grid.update_from_lidar(pose, points);
+    telemetry::publish_weight_clusters(this->occupancy_grid.get_weight_clusters());
+
+    WeightTrackingPayload weight_payload;
+    weight_payload.count = this->occupancy_grid.get_weight_clusters().size();
+    for (int i = 0; i < weight_payload.count; i++) {
+        weight_payload.targets[i] = this->occupancy_grid.get_weight_clusters()[i].centroid;
+    }
+
+    xQueueOverwrite(weight_tracking_queue, &weight_payload);
 
     this->occupancy_graph = OccupancyGridGraph(this->occupancy_grid);
 

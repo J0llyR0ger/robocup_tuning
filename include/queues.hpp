@@ -31,7 +31,7 @@ inline QueueHandle_t motionControl_ChassisCommandsQueue =
 
 // Weight Scans
 struct WeightTrackingPayload {
-    WeightTrackedTarget targets[WEIGHT_TARGET_MAX_TRACKS];
+    Eigen::Vector2f targets[WEIGHT_TARGET_MAX_TRACKS];
     size_t count;
 };
 

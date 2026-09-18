@@ -74,5 +74,6 @@ void publish_lidar_processing(LidarProcessingResult result);
 void publish_occupancy_grid(const OccupancyGridMap &grid);
 void publish_grid_path(std::span<const Eigen::Vector2f> path_points);
 void publish_tracked_weights(std::span<WeightTrackedTarget> tracked_weights);
+void publish_weight_clusters(std::span<const OccupancyGridMap::WeightCluster> clusters);
 
 } // namespace telemetry

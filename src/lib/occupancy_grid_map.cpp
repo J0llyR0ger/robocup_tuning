@@ -45,6 +45,47 @@ bool is_frontier_cell(
     return false;
 }
 
+bool is_weight_candidate_cell(const OccupancyGridMap &grid, int x, int y) {
+    if (!in_bounds(x, y)) {
+        return false;
+    }
+
+    return grid.get_score(static_cast<size_t>(x), static_cast<size_t>(y)) >=
+           OccupancyGridMap::WEIGHT_CLUSTER_OCCUPIED_THRESHOLD;
+}
+
+bool has_empty_radius(
+    const std::array<uint8_t, OccupancyGridMap::GRID_WIDTH * OccupancyGridMap::GRID_HEIGHT> &scores,
+    int cx, int cy, int radius, std::vector<OccupancyGridMap::FrontierCell> ignored_cells) {
+    for (int dy = -radius; dy <= radius; ++dy) {
+        for (int dx = -radius; dx <= radius; ++dx) {
+            const int x = cx + dx;
+            const int y = cy + dy;
+
+            for (auto &item : ignored_cells) {
+                if (item.x == x && item.y == y) {
+                    goto continue_inner_loop;
+                }
+            }
+
+            if (!in_bounds(x, y)) {
+                continue;
+            }
+
+            const float dist_sq = static_cast<float>(dx * dx + dy * dy);
+            if (dist_sq <= static_cast<float>(radius * radius) &&
+                scores[static_cast<size_t>(y) * OccupancyGridMap::GRID_WIDTH +
+                       static_cast<size_t>(x)] >=
+                    OccupancyGridMap::WEIGHT_CLUSTER_OCCUPIED_THRESHOLD) {
+                return false;
+            }
+        }
+    continue_inner_loop:;
+    }
+
+    return true;
+}
+
 } // namespace
 
 OccupancyGridMap::OccupancyGridMap() { this->clear(); }
@@ -86,6 +127,89 @@ void OccupancyGridMap::clear(uint8_t score) {
     }
 }
 
+const std::vector<OccupancyGridMap::WeightCluster> &OccupancyGridMap::get_weight_clusters() const {
+    return this->weight_clusters;
+}
+
+std::vector<OccupancyGridMap::WeightCluster> OccupancyGridMap::find_weight_clusters() const {
+    std::vector<WeightCluster> clusters;
+    std::array<uint8_t, GRID_WIDTH * GRID_HEIGHT> visited{};
+    static const int8_t dx[8] = {1, -1, 0, 0, 1, 1, -1, -1};
+    static const int8_t dy[8] = {0, 0, 1, -1, 1, -1, 1, -1};
+
+    for (size_t y = 1; y + 1 < GRID_HEIGHT; ++y) {
+        for (size_t x = 1; x + 1 < GRID_WIDTH; ++x) {
+            const size_t idx = y * GRID_WIDTH + x;
+            if (visited[idx] || !is_weight_candidate_cell(*this, (int)x, (int)y)) {
+                continue;
+            }
+
+            std::queue<FrontierCell> queue;
+            queue.push({(int)x, (int)y});
+            visited[idx] = 1;
+
+            WeightCluster cluster;
+            cluster.cells.reserve(8);
+            float centroid_x = 0.0f;
+            float centroid_y = 0.0f;
+
+            while (!queue.empty()) {
+                FrontierCell current = queue.front();
+                queue.pop();
+
+                cluster.cells.push_back(current);
+                centroid_x += static_cast<float>(current.x) + 0.5f;
+                centroid_y += static_cast<float>(current.y) + 0.5f;
+
+                for (int i = 0; i < 8; ++i) {
+                    int nx = current.x + dx[i];
+                    int ny = current.y + dy[i];
+                    if (!in_bounds(nx, ny)) {
+                        continue;
+                    }
+
+                    const size_t neighbor_idx =
+                        static_cast<size_t>(ny) * GRID_WIDTH + static_cast<size_t>(nx);
+                    if (visited[neighbor_idx] || !is_weight_candidate_cell(*this, nx, ny)) {
+                        continue;
+                    }
+
+                    visited[neighbor_idx] = 1;
+                    queue.push({nx, ny});
+                }
+            }
+
+            if (cluster.cells.size() == 0 || cluster.cells.size() > MAX_WEIGHT_CLUSTER_SIZE) {
+                continue;
+            }
+
+            bool valid_cluster = true;
+            for (const auto &cell : cluster.cells) {
+                if (!has_empty_radius(this->scores, cell.x, cell.y, WEIGHT_CLUSTER_CLEAR_RADIUS,
+                                      cluster.cells)) {
+                    valid_cluster = false;
+                    break;
+                }
+            }
+
+            if (!valid_cluster) {
+                continue;
+            }
+
+            const float count_inv = 1.0f / static_cast<float>(cluster.cells.size());
+            cluster.centroid = {centroid_x * count_inv * TILE_SIZE_METERS,
+                                centroid_y * count_inv * TILE_SIZE_METERS};
+            clusters.push_back(cluster);
+        }
+    }
+
+    return clusters;
+}
+
+void OccupancyGridMap::update_weight_clusters() {
+    this->weight_clusters = this->find_weight_clusters();
+}
+
 void OccupancyGridMap::update_from_lidar(const Pose &robot_pose,
                                          std::span<const LidarResponsePoint> points) {
     float heading = robot_pose.heading;
@@ -118,6 +242,7 @@ void OccupancyGridMap::update_from_lidar(const Pose &robot_pose,
     }
 
     this->update_frontiers();
+    this->update_weight_clusters();
 }
 
 uint8_t OccupancyGridMap::get_score(size_t x, size_t y) const {

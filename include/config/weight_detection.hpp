@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 
 struct WeightScoreMetricTuning {
     float desired = 0.0f;
@@ -40,8 +41,10 @@ static constexpr float WEIGHT_TARGET_TRACK_FORGET_CONFIDENCE = 0.05f;
 static constexpr int WEIGHT_TARGET_TRACK_MAX_MISSED_UPDATES = 20;
 
 // Cluster Identification Tuning
-static constexpr int WEIGHT_TARGET_MIN_CLUSTER_COUNT = 4;
-static constexpr int WEIGHT_TARGET_MAX_CLUSTER_COUNT = 120;
+static constexpr int WEIGHT_TARGET_MIN_CLUSTER_COUNT = 1;
+static constexpr int WEIGHT_TARGET_MAX_CLUSTER_COUNT = 4;
+static constexpr uint8_t WEIGHT_TARGET_OCCUPIED_TILE_CONFIDENCE = 200;
+static constexpr int WEIGHT_TARGET_MIN_EMPTY_RADIUS = 2;
 
 static constexpr std::array<WeightRangeTuning, 5> WEIGHT_TARGET_RANGE_TUNING = {
     WeightRangeTuning{

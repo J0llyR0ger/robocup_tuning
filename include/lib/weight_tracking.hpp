@@ -2,6 +2,7 @@
 
 #undef B1
 #include "Eigen/Geometry"
+#include "lib/occupancy_grid_map.hpp"
 #include "lidar_processing.hpp"
 
 struct WeightTrackedTarget {
@@ -16,6 +17,7 @@ struct WeightTrackedTarget {
 class WeightTracking {
   public:
     void update_from_clusters(ClusterList clusters);
+    void update_from_occupancy_grid(const OccupancyGridMap &grid);
 
     std::span<WeightTrackedTarget> get_tracked_weights();
 

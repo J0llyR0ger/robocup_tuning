@@ -332,4 +332,37 @@ void publish_tracked_weights(std::span<WeightTrackedTarget> tracked_weights) {
                 sizeof(count_u16) + count * sizeof(TrackedWeightEntry));
 }
 
+void publish_weight_clusters(std::span<const OccupancyGridMap::WeightCluster> clusters) {
+    constexpr size_t MAX_WEIGHT_CLUSTERS_PER_FRAME = 8;
+
+    TrackedWeightEntry entries[MAX_WEIGHT_CLUSTERS_PER_FRAME] = {};
+    size_t count = clusters.size();
+    if (count > MAX_WEIGHT_CLUSTERS_PER_FRAME) {
+        count = MAX_WEIGHT_CLUSTERS_PER_FRAME;
+    }
+
+    for (size_t i = 0; i < count; ++i) {
+        const float normalized_confidence =
+            static_cast<float>(clusters[i].cells.size()) /
+            static_cast<float>(OccupancyGridMap::MAX_WEIGHT_CLUSTER_SIZE);
+
+        entries[i] = {
+            .x_m = clusters[i].centroid.x(),
+            .y_m = clusters[i].centroid.y(),
+            .confidence = std::clamp(normalized_confidence, 0.0f, 1.0f),
+        };
+    }
+
+    constexpr uint16_t MAX_PAYLOAD_LEN =
+        sizeof(uint16_t) + MAX_WEIGHT_CLUSTERS_PER_FRAME * sizeof(TrackedWeightEntry);
+    uint8_t payload[MAX_PAYLOAD_LEN] = {0};
+
+    uint16_t count_u16 = static_cast<uint16_t>(count);
+    memcpy(payload, &count_u16, sizeof(count_u16));
+    memcpy(payload + sizeof(count_u16), entries, count * sizeof(TrackedWeightEntry));
+
+    write_frame(FrameType::TrackedWeights, payload,
+                sizeof(count_u16) + count * sizeof(TrackedWeightEntry));
+}
+
 } // namespace telemetry
