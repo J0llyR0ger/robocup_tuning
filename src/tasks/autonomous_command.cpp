@@ -66,9 +66,7 @@ void AutonomousCommandTask::loop() {
             speed = map(closest_weight_distance, 0.7, 0.4, 1.0, 0.3);
         }
 
-        if (closest_weight_distance < 0.7)
-
-            set_motion_control_path({{best_track.cluster.centroid}, speed});
+        set_motion_control_path({{best_track.cluster.centroid}, speed});
     } else {
         set_motion_control_path({get_discovery_path(), 1.0});
     }
