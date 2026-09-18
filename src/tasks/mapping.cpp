@@ -27,7 +27,9 @@ void MappingTask::loop() {
     telemetry::publish_weight_clusters(this->occupancy_grid.get_weight_clusters());
 
     WeightTrackingPayload weight_payload;
-    weight_payload.count = this->occupancy_grid.get_weight_clusters().size();
+    weight_payload.count =
+        std::min((int)this->occupancy_grid.get_weight_clusters().size(), WEIGHT_TARGET_MAX_TRACKS);
+
     for (int i = 0; i < weight_payload.count; i++) {
         weight_payload.targets[i] = this->occupancy_grid.get_weight_clusters()[i].centroid;
     }
