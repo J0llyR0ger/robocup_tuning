@@ -52,6 +52,9 @@ void DriveTrainTask::loop() {
     float left_rate = this->left_slew.update(left_out);
     float right_rate = this->right_slew.update(right_out);
 
+    left_rate = 1.0;
+    right_rate = 0.0;
+
     left_motor.writeMicroseconds(map(left_rate, 1.0, -1.0, FORWARD_MS, REVERSE_MS));
     right_motor.writeMicroseconds(map(right_rate, 1.0, -1.0, REVERSE_MS, FORWARD_MS));
 

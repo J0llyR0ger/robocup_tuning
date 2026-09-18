@@ -47,6 +47,8 @@ void AutonomousCommandTask::loop() {
 
         if ((sensed_pose.position - robot_pose.position).norm() > 0.2) {
             this->weight_sensed_pose = std::nullopt;
+            bool sendVal = true;
+            xQueueOverwrite(intake_position_queue, &sendVal);
             // TODO: Track total weight counting from here
         }
     } else if (xQueueReceive(intake_entry_queue, &is_real, 0)) {

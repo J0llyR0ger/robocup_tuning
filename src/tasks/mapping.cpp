@@ -10,6 +10,8 @@ MappingTask::MappingTask() : SchedulerTask("mapping") {}
 
 void MappingTask::setup() { this->occupancy_grid.clear(); }
 
+const float SIZE_DISTANCE_WEIGHTING = 0.5;
+
 void MappingTask::loop() {
     static uint32_t next_grid_publish_ms = 0;
 
@@ -25,16 +27,38 @@ void MappingTask::loop() {
 
     this->occupancy_graph = OccupancyGridGraph(this->occupancy_grid);
 
-    auto discovery_path = get_path_between_world_points(
-        pose.position, {FIELD_WIDTH_X_METERS / 2.0, FIELD_HEIGHT_Y_METERS / 2.0});
+    float best_frontier_score = 0.0;
 
-    auto home_path = get_path_between_world_points(pose.position, {0.5, 0.5});
+    int best_frontier_index = -1;
+
+    for (int i = 0; i < this->occupancy_grid.get_frontier_clusters().size(); i++) {
+        auto cluster = this->occupancy_grid.get_frontier_clusters()[i];
+
+        float distance = (pose.position - cluster.centroid).norm();
+
+        float score = (float)cluster.cell_count() / powf(distance, SIZE_DISTANCE_WEIGHTING);
+
+        if (score > best_frontier_score) {
+            best_frontier_score = score;
+            best_frontier_index = i;
+        }
+    }
+
+    if (best_frontier_index >= 0) {
+        auto discovery_path = get_path_between_world_points(
+            pose.position,
+
+            this->occupancy_grid.get_frontier_clusters()[best_frontier_index].centroid);
+        set_discovery_path(discovery_path);
+
+        telemetry::publish_grid_path(discovery_path);
+    } else {
+        set_discovery_path({});
+    }
+
+    set_home_path(get_path_between_world_points(pose.position, {0.5, 0.5}));
 
     telemetry::publish_occupancy_grid(this->occupancy_grid);
-    telemetry::publish_grid_path(discovery_path);
-
-    set_discovery_path(discovery_path);
-    set_home_path(home_path);
 }
 
 const OccupancyGridMap &MappingTask::get_occupancy_grid() const { return this->occupancy_grid; }

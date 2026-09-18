@@ -1,11 +1,49 @@
 #include "lib/occupancy_grid_map.hpp"
 #include <algorithm>
 #include <cmath>
+#include <queue>
+#include <vector>
 #include <wiring.h>
+
+const float MAX_EMPTY_CONFIRMATION_DISTANCE = 1.0;
 
 namespace {
 
 int abs_int(int value) { return value < 0 ? -value : value; }
+
+bool in_bounds(int x, int y) {
+    return x >= 0 && y >= 0 && x < (int)OccupancyGridMap::GRID_WIDTH &&
+           y < (int)OccupancyGridMap::GRID_HEIGHT;
+}
+
+bool is_frontier_cell(
+    const std::array<uint8_t, OccupancyGridMap::GRID_WIDTH * OccupancyGridMap::GRID_HEIGHT> &scores,
+    int x, int y) {
+    const size_t idx =
+        static_cast<size_t>(y) * OccupancyGridMap::GRID_WIDTH + static_cast<size_t>(x);
+    if (scores[idx] >= OccupancyGridMap::UNKNOWN_SCORE) {
+        return false;
+    }
+
+    static const int8_t dx[8] = {1, -1, 0, 0, 1, 1, -1, -1};
+    static const int8_t dy[8] = {0, 0, 1, -1, 1, -1, 1, -1};
+
+    for (int i = 0; i < 8; ++i) {
+        int nx = x + dx[i];
+        int ny = y + dy[i];
+        if (!in_bounds(nx, ny)) {
+            continue;
+        }
+
+        const size_t neighbor_idx =
+            static_cast<size_t>(ny) * OccupancyGridMap::GRID_WIDTH + static_cast<size_t>(nx);
+        if (scores[neighbor_idx] == OccupancyGridMap::UNKNOWN_SCORE) {
+            return true;
+        }
+    }
+
+    return false;
+}
 
 } // namespace
 
@@ -13,6 +51,7 @@ OccupancyGridMap::OccupancyGridMap() { this->clear(); }
 
 void OccupancyGridMap::clear(uint8_t score) {
     this->scores.fill(score);
+    this->frontier_clusters.clear();
 
     if (score != UNKNOWN_SCORE) {
         return;
@@ -77,6 +116,8 @@ void OccupancyGridMap::update_from_lidar(const Pose &robot_pose,
 
         this->apply_beam(lidar_origin, hit_world);
     }
+
+    this->update_frontiers();
 }
 
 uint8_t OccupancyGridMap::get_score(size_t x, size_t y) const {
@@ -112,6 +153,103 @@ bool OccupancyGridMap::world_to_grid(const Eigen::Vector2f &position, int &grid_
     grid_x = x;
     grid_y = y;
     return true;
+}
+
+const std::vector<OccupancyGridMap::FrontierCluster> &
+OccupancyGridMap::get_frontier_clusters() const {
+    return this->frontier_clusters;
+}
+
+const std::vector<OccupancyGridMap::FrontierCluster> &OccupancyGridMap::frontiers() const {
+    return this->frontier_clusters;
+}
+
+std::vector<OccupancyGridMap::FrontierCell> OccupancyGridMap::get_frontier_cells() const {
+    std::vector<FrontierCell> frontier_cells;
+    frontier_cells.reserve(this->frontier_clusters.size() * 8);
+
+    for (const FrontierCluster &cluster : this->frontier_clusters) {
+        frontier_cells.insert(frontier_cells.end(), cluster.cells.begin(), cluster.cells.end());
+    }
+
+    return frontier_cells;
+}
+
+void OccupancyGridMap::update_frontiers() {
+    std::vector<FrontierCell> frontier_cells;
+    frontier_cells.reserve(GRID_WIDTH * GRID_HEIGHT / 8);
+
+    for (size_t y = 1; y + 1 < GRID_HEIGHT; ++y) {
+        for (size_t x = 1; x + 1 < GRID_WIDTH; ++x) {
+            if (!is_frontier_cell(this->scores, (int)x, (int)y)) {
+                continue;
+            }
+
+            frontier_cells.push_back({(int)x, (int)y});
+        }
+    }
+
+    this->frontier_clusters.clear();
+    std::array<uint8_t, GRID_WIDTH * GRID_HEIGHT> visited{};
+
+    static const int8_t dx[8] = {1, -1, 0, 0, 1, 1, -1, -1};
+    static const int8_t dy[8] = {0, 0, 1, -1, 1, -1, 1, -1};
+
+    for (const FrontierCell &seed : frontier_cells) {
+        const size_t seed_idx =
+            static_cast<size_t>(seed.y) * GRID_WIDTH + static_cast<size_t>(seed.x);
+        if (visited[seed_idx]) {
+            continue;
+        }
+
+        std::queue<FrontierCell> queue;
+        queue.push(seed);
+        visited[seed_idx] = 1;
+
+        FrontierCluster cluster;
+        cluster.cells.reserve(8);
+
+        while (!queue.empty()) {
+            FrontierCell current = queue.front();
+            queue.pop();
+
+            cluster.cells.push_back(current);
+
+            for (int i = 0; i < 8; ++i) {
+                int nx = current.x + dx[i];
+                int ny = current.y + dy[i];
+                if (!in_bounds(nx, ny)) {
+                    continue;
+                }
+
+                const size_t neighbor_idx =
+                    static_cast<size_t>(ny) * GRID_WIDTH + static_cast<size_t>(nx);
+                if (visited[neighbor_idx] || !is_frontier_cell(this->scores, nx, ny)) {
+                    continue;
+                }
+
+                visited[neighbor_idx] = 1;
+                queue.push({nx, ny});
+            }
+        }
+
+        if (cluster.cells.size() < MIN_FRONTIER_CLUSTER_SIZE) {
+            continue;
+        }
+
+        float centroid_x = 0.0f;
+        float centroid_y = 0.0f;
+        for (const FrontierCell &cell : cluster.cells) {
+            centroid_x += static_cast<float>(cell.x) + 0.5f;
+            centroid_y += static_cast<float>(cell.y) + 0.5f;
+        }
+
+        centroid_x *= TILE_SIZE_METERS / static_cast<float>(cluster.cells.size());
+        centroid_y *= TILE_SIZE_METERS / static_cast<float>(cluster.cells.size());
+        cluster.centroid = {centroid_x, centroid_y};
+
+        this->frontier_clusters.push_back(cluster);
+    }
 }
 
 void OccupancyGridMap::apply_beam(const Eigen::Vector2f &origin_world,
@@ -171,7 +309,14 @@ void OccupancyGridMap::apply_beam(const Eigen::Vector2f &origin_world,
             break;
         }
 
-        this->decrease_cell(x, y);
+        // Maximum empty confirmation radius
+        if (sqrtf((float)((x - origin_x) * (x - origin_x)) +
+                  (float)((y - origin_y) * (y - origin_y))) *
+                    TILE_SIZE_METERS <
+                MAX_EMPTY_CONFIRMATION_DISTANCE ||
+            get_score(x, y) > UNKNOWN_SCORE) {
+            this->decrease_cell(x, y);
+        }
 
         x = next_x;
         y = next_y;
@@ -195,4 +340,29 @@ void OccupancyGridMap::decrease_cell(int grid_x, int grid_y) {
     }
 
     this->scores[idx] = (uint8_t)(current - FREE_DECREMENT);
+}
+
+std::vector<Eigen::Vector2f> OccupancyGridMap::get_frontier_points() const {
+    std::vector<Eigen::Vector2f> points;
+    points.reserve(this->frontier_clusters.size() * 8);
+
+    for (const FrontierCluster &cluster : this->frontier_clusters) {
+        for (const FrontierCell &cell : cluster.cells) {
+            points.emplace_back((static_cast<float>(cell.x) + 0.5f) * TILE_SIZE_METERS,
+                                (static_cast<float>(cell.y) + 0.5f) * TILE_SIZE_METERS);
+        }
+    }
+
+    return points;
+}
+
+std::vector<Eigen::Vector2f> OccupancyGridMap::get_frontier_centroids() const {
+    std::vector<Eigen::Vector2f> centroids;
+    centroids.reserve(this->frontier_clusters.size());
+
+    for (const FrontierCluster &cluster : this->frontier_clusters) {
+        centroids.push_back(cluster.centroid);
+    }
+
+    return centroids;
 }
