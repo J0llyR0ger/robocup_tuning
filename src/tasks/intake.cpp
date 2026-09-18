@@ -53,6 +53,8 @@ void IntakeTask::set_position(bool up) {
 const int IO_EXPANDER_ADDRESS = 0x3E;
 const int PIN_INPUT_STATE_ADDRESS = 0x10;
 
+const int CONDUCTION_DEBOUNCER_TIME = 100;
+
 uint16_t readPins() {
     // Manually read the pins instead of using the expander library, as the library uses redundant
     // multiple tranmissions when reading more than 1 pin
@@ -87,6 +89,19 @@ void IntakeTask::loop() {
     bool conduction_state = (pins & (1 << ENTRY_CONDUCTION_PIN)) == 0;
     bool switch_state = (pins & (1 << ENTRY_SWITCH_PIN)) == 0;
 
+    int time = millis();
+
+    if (conduction_state) {
+        this->last_conduction_time = time;
+
+        if (weight_intake_state != WeightIntakeState::RealWeightDetected) {
+            weight_intake_state = WeightIntakeState::RealWeightDetected;
+            total_weights++;
+            bool val = true;
+            xQueueSend(intake_entry_queue, &val, 0);
+        }
+    }
+
     switch (weight_intake_state) {
     case WeightIntakeState::None:
         if (switch_state) {
@@ -106,14 +121,13 @@ void IntakeTask::loop() {
             weight_intake_state = WeightIntakeState::DummyWeightDetected;
             bool val = false;
             xQueueSend(intake_entry_queue, &val, 0);
-            total_weights++;
         }
 
         break;
     }
     case WeightIntakeState::RealWeightDetected:
     case WeightIntakeState::DummyWeightDetected:
-        if (!switch_state) {
+        if (!switch_state && time - last_conduction_time > CONDUCTION_DEBOUNCER_TIME) {
             weight_intake_state = WeightIntakeState::None;
         }
         break;

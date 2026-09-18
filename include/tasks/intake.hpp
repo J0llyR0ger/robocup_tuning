@@ -25,6 +25,8 @@ class IntakeTask : public SchedulerTask {
 
     WeightIntakeState weight_intake_state = WeightIntakeState::None;
 
+    int last_conduction_time = 0;
+
     void set_position(bool up);
 
   public:
