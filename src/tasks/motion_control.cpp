@@ -6,7 +6,7 @@
 #define DRIVE_KP 35e-1
 #define DRIVE_KI 0 // 20e-4
 
-#define TURN_KP 1.0
+#define TURN_KP 0.9
 #define TURN_KI 0
 #define TURN_KD 30e-2
 
