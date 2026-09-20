@@ -1,6 +1,7 @@
 #include "tasks/drive_train.hpp"
 #include "queues.hpp"
 #include "telemetry_bus.hpp"
+#include <mutexes.hpp>
 #include <wiring.h>
 
 DriveTrainTask::DriveTrainTask() : SchedulerTask("drive_train_task") {}
@@ -69,6 +70,8 @@ void DriveTrainTask::loop() {
 
     float left_velocity = RADIANS_PER_TICK * (float)(left_ticks - last_left_ticks) / dt;
     float right_velocity = RADIANS_PER_TICK * (float)(right_ticks - last_right_ticks) / dt;
+
+    
 
     last_left_ticks = left_ticks;
     last_right_ticks = right_ticks;

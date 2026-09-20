@@ -6,6 +6,7 @@ void setupMutexes() {
     motionControlPathMutex = xSemaphoreCreateMutex();
     discoveryPathMutex = xSemaphoreCreateMutex();
     homePathMutex = xSemaphoreCreateMutex();
+    robotMotionMismatchMutex = xSemaphoreCreateMutex();
 }
 
 Pose get_global_pose() {
@@ -79,3 +80,23 @@ void set_home_path(std::vector<Eigen::Vector2f> path) {
 
     xSemaphoreGive(homePathMutex);
 }
+
+//------ Joel Edits -------
+bool get_robot_motion_mismatch() {
+    xSemaphoreTake(robotMotionMismatchMutex, portMAX_DELAY);
+
+    bool mismatch = robot_motion_mismatch;
+
+    xSemaphoreGive(robotMotionMismatchMutex);
+
+    return mismatch;
+}
+
+void set_robot_motion_mismatch(bool mismatch) {
+    xSemaphoreTake(robotMotionMismatchMutex, portMAX_DELAY);
+
+    robot_motion_mismatch = mismatch;
+
+    xSemaphoreGive(robotMotionMismatchMutex);
+}
+//---------------------------------

@@ -15,6 +15,9 @@ class PositionTrackingTask : public SchedulerTask {
 
     float last_heading;
 
+    float accumulated_odometry_distance = 0.0f;
+    Eigen::Vector2f last_mcl_position = Eigen::Vector2f::Zero();
+
     OdometryModule odometry;
     MonteCarloLocalization mcl;
 

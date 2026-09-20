@@ -12,10 +12,19 @@ void setupMutexes();
 Pose get_global_pose();
 void set_global_pose(Pose pose);
 
+//----- Joel edits -------
+inline bool robot_motion_mismatch = false;
+inline SemaphoreHandle_t robotMotionMismatchMutex = nullptr;
+
+bool get_robot_motion_mismatch();
+void set_robot_motion_mismatch(bool mismatch);
+//------------------------
+
 struct MotionControlPath {
     std::vector<Eigen::Vector2f> path;
     float speed;
 };
+ 
 
 MotionControlPath get_motion_control_path();
 void set_motion_control_path(MotionControlPath path);

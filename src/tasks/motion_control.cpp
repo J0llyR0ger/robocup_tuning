@@ -3,12 +3,27 @@
 #include "telemetry_bus.hpp"
 #include <mutexes.hpp>
 
-#define DRIVE_KP 35e-1
+#define DRIVE_KP 25e-1 //alex 40e-1
 #define DRIVE_KI 0 // 20e-4
 
-#define TURN_KP 0.9
+#define TURN_KP 1//alex - 1
 #define TURN_KI 0
-#define TURN_KD 30e-2
+#define TURN_KD 30e-2 //alex - 30e-2
+
+//------- Joel edits -------
+static const uint32_t STUCK_TIME_MS = 120;
+static const uint32_t REVERSE_TIME_MS = 1400;
+
+static const float REVERSE_COMMAND = 0.20;
+
+static bool stuck_timer_running = false;
+static bool reversing = false;
+
+static uint32_t stuck_start_time = 0;
+static uint32_t reverse_start_time = 0;
+
+
+//---------------------------
 
 MotionControlTask::MotionControlTask()
     : SchedulerTask("motion_control"), pure_pursuit(0.6),
@@ -37,6 +52,36 @@ void MotionControlTask::loop() {
 
     float left_drive = drive_output + turn_output;
     float right_drive = drive_output - turn_output;
+
+    //------- Joel edits -------
+    bool motion_mismatch = get_robot_motion_mismatch();
+    uint32_t now = millis();
+
+    if (!reversing) {
+        if (motion_mismatch) {
+            if (!stuck_timer_running) {
+                stuck_timer_running = true;
+                stuck_start_time = now;
+            } else if (now - stuck_start_time >= STUCK_TIME_MS) {
+                reversing = true;
+                reverse_start_time = now;
+                stuck_timer_running = false;
+            }
+        } else {
+            stuck_timer_running = false;
+        }
+    }
+
+    if (reversing) {
+        if (now - reverse_start_time < REVERSE_TIME_MS) {
+            left_drive = -REVERSE_COMMAND;
+            right_drive = -REVERSE_COMMAND;
+        } else {
+            reversing = false;
+        }
+    }
+    //---------------------------
+
     float largest_cmd = fabs(fmax(left_drive, right_drive));
 
     if (largest_cmd > 1.0) {

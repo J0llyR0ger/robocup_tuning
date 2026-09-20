@@ -103,7 +103,7 @@ static void timing_log_task(void *) {
 }
 
 void setup() {
-    Serial.begin(0);
+    Serial.begin(115200);
 
     if (CrashReport) {
         Serial.print(CrashReport);
