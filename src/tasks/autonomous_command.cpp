@@ -7,6 +7,13 @@ AutonomousCommandTask::AutonomousCommandTask() : SchedulerTask("autonomous_comma
 
 void AutonomousCommandTask::setup() {}
 
+void AutonomousCommandTask::ignore_locked_weight() {
+    if (this->locked_weight_position.has_value()) {
+        this->failed_weight_positions.push_back(this->locked_weight_position.value());
+        this->locked_weight_position = std::nullopt;
+    }
+}
+
 void AutonomousCommandTask::loop() {
     auto robot_pose = get_global_pose();
 
@@ -16,11 +23,38 @@ void AutonomousCommandTask::loop() {
 
     xQueuePeek(weight_tracking_queue, &weight_targets, portMAX_DELAY);
 
+    bool is_real;
+
+    // A non-conductive entry means the robot reached the locked target but did not
+    // collect a real weight. Keep the coordinate locally so the map can continue
+    // tracking it, while autonomous selection moves on to another target.
+    if (xQueueReceive(intake_entry_queue, &is_real, 0)) {
+        if (!is_real && this->locked_weight_position.has_value()) {
+            this->ignore_locked_weight();
+        } else if (is_real) {
+            this->weight_sensed_pose = robot_pose;
+            this->locked_weight_position = std::nullopt;
+        }
+    }
+
     int best_track_index = -1;
     float closest_weight_distance = 5.0;
 
     for (size_t track_index = 0; track_index < weight_targets.count; ++track_index) {
         const auto &track = weight_targets.targets[track_index];
+
+        bool previously_failed = false;
+
+        for (const auto &failed_position : this->failed_weight_positions) {
+            if ((track - failed_position).norm() < 0.3) {
+                previously_failed = true;
+                break;
+            }
+        }
+
+        if (previously_failed) {
+            continue;
+        }
 
         auto dist = (track - robot_pose.position).norm();
 
@@ -33,8 +67,6 @@ void AutonomousCommandTask::loop() {
     uint8_t total_weights_carried;
 
     xQueuePeek(carried_weight_count, &total_weights_carried, portMAX_DELAY);
-
-    bool is_real;
 
     bool intake_position = false;
 
@@ -53,16 +85,11 @@ void AutonomousCommandTask::loop() {
         } else {
             intake_position = false;
         }
-    } else if (xQueueReceive(intake_entry_queue, &is_real, 0)) {
-        this->weight_sensed_pose = robot_pose;
-        this->locked_weight_position = std::nullopt;
-        intake_position = false;
-
-        // Todo: ignore fake weights
-
     } else if (this->locked_weight_position.has_value()) {
         if ((this->locked_weight_position.value() - locking_center).norm() > 0.3) {
-            this->locked_weight_position = std::nullopt;
+            // Preserve the original lock-loss behaviour, except do not allow the
+            // same known coordinate to be locked again after a missed pickup.
+            this->ignore_locked_weight();
         } else {
             set_motion_control_path({{this->locked_weight_position.value()}, 1.0});
             intake_position = false;
