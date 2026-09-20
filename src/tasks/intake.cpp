@@ -119,6 +119,13 @@ void IntakeTask::loop() {
             xQueueSend(intake_entry_queue, &val, 0);
         } else if (!conduction_state) {
             weight_intake_state = WeightIntakeState::DummyWeightDetected;
+
+            // Do this in the sensor-owning task rather than waiting for the
+            // autonomous queue consumer.  A command to raise the rails may
+            // already be pending from the approach phase; the dummy must not
+            // be allowed to ride that command into the intake.
+            set_position(false);
+
             bool val = false;
             xQueueSend(intake_entry_queue, &val, 0);
         }

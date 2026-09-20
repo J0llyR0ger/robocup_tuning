@@ -6,21 +6,24 @@
 #define DRIVE_KP 25e-1 //alex 40e-1
 #define DRIVE_KI 0 // 20e-4
 
-#define TURN_KP 1//alex - 1
+#define TURN_KP 1.5//alex - 1
 #define TURN_KI 0
-#define TURN_KD 30e-2 //alex - 30e-2
+#define TURN_KD 50e-2 //alex - 30e-2
 
 //------- Joel edits -------
 static const uint32_t STUCK_TIME_MS = 120;
 static const uint32_t REVERSE_TIME_MS = 1400;
 
 static const float REVERSE_COMMAND = 0.20;
+static const float DUMMY_WEIGHT_REVERSE_SPEED = 0.20f;
 
 static bool stuck_timer_running = false;
 static bool reversing = false;
 
 static uint32_t stuck_start_time = 0;
 static uint32_t reverse_start_time = 0;
+
+static MotionControlOverride motion_override = MotionControlOverride::None;
 
 
 //---------------------------
@@ -37,6 +40,11 @@ MotionControlTask::MotionControlTask()
 void MotionControlTask::setup() {}
 
 void MotionControlTask::loop() {
+    MotionControlOverride new_override;
+    if (xQueueReceive(motion_control_override_queue, &new_override, 0)) {
+        motion_override = new_override;
+    }
+
     auto path = get_motion_control_path();
     this->pure_pursuit.set_current_path(path.path);
 
@@ -81,6 +89,13 @@ void MotionControlTask::loop() {
         }
     }
     //---------------------------
+
+    // Autonomous dummy rejection takes precedence over path following (and the
+    // normal stuck-recovery reverse) while the intake sequence is active.
+    if (motion_override == MotionControlOverride::DummyWeightReverse) {
+        left_drive = -DUMMY_WEIGHT_REVERSE_SPEED;
+        right_drive = -DUMMY_WEIGHT_REVERSE_SPEED;
+    }
 
     float largest_cmd = fabs(fmax(left_drive, right_drive));
 

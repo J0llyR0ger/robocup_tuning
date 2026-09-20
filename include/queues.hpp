@@ -29,6 +29,16 @@ inline QueueHandle_t lidarReader_MappingScanQueue = xQueueCreate(1, sizeof(Lidar
 inline QueueHandle_t motionControl_ChassisCommandsQueue =
     xQueueCreate(1, sizeof(std::tuple<float, float>));
 
+// Requests that temporarily take precedence over path following.  The command
+// task owns the lifetime of these requests; MotionControlTask owns the motors.
+enum class MotionControlOverride : uint8_t {
+    None,
+    DummyWeightReverse,
+};
+
+inline QueueHandle_t motion_control_override_queue =
+    xQueueCreate(1, sizeof(MotionControlOverride));
+
 // Weight Scans
 struct WeightTrackingPayload {
     Eigen::Vector2f targets[WEIGHT_TARGET_MAX_TRACKS];

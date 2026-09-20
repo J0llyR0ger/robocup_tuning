@@ -1,9 +1,18 @@
 #include "tasks/autonomous_command.hpp"
+#include "Arduino.h"
 #include "telemetry_bus.hpp"
 #include <mutexes.hpp>
 #include <queues.hpp>
 
 AutonomousCommandTask::AutonomousCommandTask() : SchedulerTask("autonomous_command") {}
+
+// This uses the same magnitude as MotionControlTask's existing stuck-recovery
+// reverse.  It is deliberately much slower than normal autonomous driving.
+static const uint32_t DUMMY_WEIGHT_REVERSE_CLEARANCE_MS = 1400;
+// Once a target enters the final pickup zone, do not let intermittent tracking
+// raise the rails before it reaches the intake switch.  This is only a failsafe
+// for a missed target; either intake entry clears it immediately.
+static const uint32_t PICKUP_RAIL_HOLD_DOWN_TIMEOUT_MS = 2000;
 
 void AutonomousCommandTask::setup() {}
 
@@ -25,17 +34,54 @@ void AutonomousCommandTask::loop() {
 
     bool is_real;
 
-    // A non-conductive entry means the robot reached the locked target but did not
-    // collect a real weight. Keep the coordinate locally so the map can continue
-    // tracking it, while autonomous selection moves on to another target.
+    // A non-conductive switch entry is the intake's existing dummy-weight
+    // determination.  The next such entry is the same switch being released and
+    // triggered again while reversing, which is the point at which the rails can
+    // safely move to storage.
     if (xQueueReceive(intake_entry_queue, &is_real, 0)) {
-        if (!is_real && this->locked_weight_position.has_value()) {
+        this->pickup_attempt_rails_down = false;
+
+        if (!is_real && this->dummy_weight_rejection_state ==
+                            DummyWeightRejectionState::ReverseUntilSwitchRetrigger) {
+            this->dummy_weight_rejection_state = DummyWeightRejectionState::ReverseForClearance;
+            this->dummy_weight_clearance_start_time = millis();
+        } else if (!is_real && this->dummy_weight_rejection_state ==
+                                   DummyWeightRejectionState::Idle) {
             this->ignore_locked_weight();
+            this->dummy_weight_rejection_state =
+                DummyWeightRejectionState::ReverseUntilSwitchRetrigger;
         } else if (is_real) {
             this->weight_sensed_pose = robot_pose;
             this->locked_weight_position = std::nullopt;
         }
     }
+
+    if (this->pickup_attempt_rails_down &&
+        millis() - this->pickup_attempt_start_time >= PICKUP_RAIL_HOLD_DOWN_TIMEOUT_MS) {
+        this->pickup_attempt_rails_down = false;
+    }
+
+    if (this->dummy_weight_rejection_state != DummyWeightRejectionState::Idle) {
+        if (this->dummy_weight_rejection_state ==
+                DummyWeightRejectionState::ReverseForClearance &&
+            millis() - this->dummy_weight_clearance_start_time >=
+                DUMMY_WEIGHT_REVERSE_CLEARANCE_MS) {
+            this->dummy_weight_rejection_state = DummyWeightRejectionState::Idle;
+        } else {
+            MotionControlOverride override_command = MotionControlOverride::DummyWeightReverse;
+            xQueueOverwrite(motion_control_override_queue, &override_command);
+
+            // The rails stay down until the dummy produces the second entry-switch
+            // event.  The storage command is then held while it is left behind.
+            bool intake_position = this->dummy_weight_rejection_state ==
+                                   DummyWeightRejectionState::ReverseForClearance;
+            xQueueOverwrite(intake_position_queue, &intake_position);
+            return;
+        }
+    }
+
+    MotionControlOverride override_command = MotionControlOverride::None;
+    xQueueOverwrite(motion_control_override_queue, &override_command);
 
     int best_track_index = -1;
     float closest_weight_distance = 5.0;
@@ -101,6 +147,8 @@ void AutonomousCommandTask::loop() {
 
         if ((best_track - locking_center).norm() < 0.3) {
             this->locked_weight_position = best_track;
+            this->pickup_attempt_rails_down = true;
+            this->pickup_attempt_start_time = millis();
             intake_position = false;
         } else {
             intake_position = true;
@@ -110,6 +158,12 @@ void AutonomousCommandTask::loop() {
     } else {
         intake_position = true;
         set_motion_control_path({get_discovery_path(), 1.0});
+    }
+
+    // This latch has priority over target/map transitions until the object has
+    // actually entered the intake (or the missed-target timeout expires).
+    if (this->pickup_attempt_rails_down) {
+        intake_position = false;
     }
 
     xQueueOverwrite(intake_position_queue, &intake_position);
