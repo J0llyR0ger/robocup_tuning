@@ -13,9 +13,9 @@ static const uint32_t DUMMY_WEIGHT_REVERSE_CLEARANCE_MS = 1400;
 // raise the rails before it reaches the intake switch.  This is only a failsafe
 // for a missed target; either intake entry clears it immediately.
 static const uint32_t PICKUP_RAIL_HOLD_DOWN_TIMEOUT_MS = 2000;
-static const float HOME_ARRIVAL_DISTANCE_M = 0.70f;
+static const float HOME_ARRIVAL_DISTANCE_M = 1.0f;
 static const uint32_t HOME_DROP_RELEASE_TIME_MS = 1000;
-static const uint32_t HOME_DROP_REVERSE_TIME_MS = 1400;
+static const uint32_t HOME_DROP_REVERSE_TIME_MS = 2500;
 
 void AutonomousCommandTask::setup() {}
 
