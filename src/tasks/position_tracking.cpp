@@ -23,6 +23,7 @@ void PositionTrackingTask::setup() {
 
     this->mcl.set_initial_pose(initial_pose, INITIAL_POSITION_NOISE, INITIAL_HEADING_NOISE);
     this->last_mcl_position = initial_pose.position;
+    set_global_pose(initial_pose);
 }
 
 void PositionTrackingTask::loop() {

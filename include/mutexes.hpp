@@ -38,5 +38,8 @@ static inline std::vector<Eigen::Vector2f> discoveryPath;
 
 std::vector<Eigen::Vector2f> get_home_path();
 void set_home_path(std::vector<Eigen::Vector2f> path);
+Eigen::Vector2f get_home_position();
+void set_home_position(Eigen::Vector2f position);
 inline SemaphoreHandle_t homePathMutex = nullptr;
 static inline std::vector<Eigen::Vector2f> homePath;
+static inline Eigen::Vector2f homePosition;

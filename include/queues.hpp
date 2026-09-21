@@ -34,10 +34,15 @@ inline QueueHandle_t motionControl_ChassisCommandsQueue =
 enum class MotionControlOverride : uint8_t {
     None,
     DummyWeightReverse,
+    HomeDropReverse,
 };
 
 inline QueueHandle_t motion_control_override_queue =
     xQueueCreate(1, sizeof(MotionControlOverride));
+
+// Published by MotionControlTask while its encoder/motion-mismatch recovery
+// reverse is active.  AutonomousCommandTask uses it to keep the intake safe.
+inline QueueHandle_t motion_control_recovery_reversing_queue = xQueueCreate(1, sizeof(bool));
 
 // Weight Scans
 struct WeightTrackingPayload {
@@ -50,8 +55,12 @@ inline QueueHandle_t weight_tracking_queue = xQueueCreate(1, sizeof(WeightTracki
 // Intake
 
 inline QueueHandle_t carried_weight_count = xQueueCreate(1, sizeof(uint8_t));
+inline QueueHandle_t intake_reset_carried_weight_count_queue = xQueueCreate(1, sizeof(bool));
 
 inline QueueHandle_t intake_position_queue = xQueueCreate(1, sizeof(bool));
+
+// True is no metal (probe high); false is metal present (probe low).
+inline QueueHandle_t storage_voltage_probe_queue = xQueueCreate(1, sizeof(bool));
 
 // True means rule, false means dummy
 inline QueueHandle_t intake_entry_queue = xQueueCreate(10, sizeof(bool));

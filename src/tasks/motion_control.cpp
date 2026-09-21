@@ -16,6 +16,10 @@ static const uint32_t REVERSE_TIME_MS = 1400;
 
 static const float REVERSE_COMMAND = 0.20;
 static const float DUMMY_WEIGHT_REVERSE_SPEED = 0.20f;
+static const float HOME_DROP_REVERSE_SPEED = 0.20f;
+// Limit the faster, outside wheel during normal forward path turns.  Lowering
+// this makes turns more aggressive; keep it below the full-drive limit.
+static const float OUTSIDE_WHEEL_MAX_TURN_SPEED = 0.9f;
 
 static bool stuck_timer_running = false;
 static bool reversing = false;
@@ -90,11 +94,19 @@ void MotionControlTask::loop() {
     }
     //---------------------------
 
+    // Let autonomous raise the rails and suspend pickup decisions while this
+    // existing encoder/motion-mismatch recovery is backing the robot away.
+    bool recovery_reversing = reversing;
+    xQueueOverwrite(motion_control_recovery_reversing_queue, &recovery_reversing);
+
     // Autonomous dummy rejection takes precedence over path following (and the
     // normal stuck-recovery reverse) while the intake sequence is active.
     if (motion_override == MotionControlOverride::DummyWeightReverse) {
         left_drive = -DUMMY_WEIGHT_REVERSE_SPEED;
         right_drive = -DUMMY_WEIGHT_REVERSE_SPEED;
+    } else if (motion_override == MotionControlOverride::HomeDropReverse) {
+        left_drive = -HOME_DROP_REVERSE_SPEED;
+        right_drive = -HOME_DROP_REVERSE_SPEED;
     }
 
     float largest_cmd = fabs(fmax(left_drive, right_drive));
@@ -102,6 +114,17 @@ void MotionControlTask::loop() {
     if (largest_cmd > 1.0) {
         left_drive = left_drive / largest_cmd;
         right_drive = right_drive / largest_cmd;
+    }
+
+    // With left_drive = drive + turn and right_drive = drive - turn, the sign
+    // of turn_output identifies the outside wheel for a forward turn.  Apply
+    // this after normalization so the limit is the actual motor command.
+    if (motion_override == MotionControlOverride::None) {
+        if (turn_output > 0.0f) {
+            left_drive = fmin(left_drive, OUTSIDE_WHEEL_MAX_TURN_SPEED);
+        } else if (turn_output < 0.0f) {
+            right_drive = fmin(right_drive, OUTSIDE_WHEEL_MAX_TURN_SPEED);
+        }
     }
 
     std::tuple<float, float> commands = std::make_tuple(left_drive, right_drive);

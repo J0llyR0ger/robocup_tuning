@@ -8,7 +8,11 @@
 
 MappingTask::MappingTask() : SchedulerTask("mapping") {}
 
-void MappingTask::setup() { this->occupancy_grid.clear(); }
+void MappingTask::setup() {
+    this->occupancy_grid.clear();
+    this->home_position = get_global_pose().position;
+    set_home_position(this->home_position);
+}
 
 const float SIZE_DISTANCE_WEIGHTING = 0.5;
 
@@ -67,7 +71,14 @@ void MappingTask::loop() {
         set_discovery_path({});
     }
 
-    set_home_path(get_path_between_world_points(pose.position, {0.5, 0.5}));
+    auto home_path = get_path_between_world_points(pose.position, this->home_position);
+    if (home_path.empty() && (pose.position - this->home_position).norm() > 0.1f) {
+        // A* can temporarily have no route while the occupancy grid is still
+        // being populated.  A direct home waypoint keeps return-to-base from
+        // becoming a stationary command in that case.
+        home_path.push_back(this->home_position);
+    }
+    set_home_path(home_path);
 
     telemetry::publish_occupancy_grid(this->occupancy_grid);
 }

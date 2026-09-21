@@ -81,6 +81,19 @@ void set_home_path(std::vector<Eigen::Vector2f> path) {
     xSemaphoreGive(homePathMutex);
 }
 
+Eigen::Vector2f get_home_position() {
+    xSemaphoreTake(homePathMutex, portMAX_DELAY);
+    Eigen::Vector2f position = homePosition;
+    xSemaphoreGive(homePathMutex);
+    return position;
+}
+
+void set_home_position(Eigen::Vector2f position) {
+    xSemaphoreTake(homePathMutex, portMAX_DELAY);
+    homePosition = position;
+    xSemaphoreGive(homePathMutex);
+}
+
 //------ Joel Edits -------
 bool get_robot_motion_mismatch() {
     xSemaphoreTake(robotMotionMismatchMutex, portMAX_DELAY);

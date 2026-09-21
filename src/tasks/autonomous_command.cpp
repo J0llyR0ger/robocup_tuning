@@ -13,6 +13,9 @@ static const uint32_t DUMMY_WEIGHT_REVERSE_CLEARANCE_MS = 1400;
 // raise the rails before it reaches the intake switch.  This is only a failsafe
 // for a missed target; either intake entry clears it immediately.
 static const uint32_t PICKUP_RAIL_HOLD_DOWN_TIMEOUT_MS = 2000;
+static const float HOME_ARRIVAL_DISTANCE_M = 0.70f;
+static const uint32_t HOME_DROP_RELEASE_TIME_MS = 1000;
+static const uint32_t HOME_DROP_REVERSE_TIME_MS = 1400;
 
 void AutonomousCommandTask::setup() {}
 
@@ -82,6 +85,71 @@ void AutonomousCommandTask::loop() {
 
     MotionControlOverride override_command = MotionControlOverride::None;
     xQueueOverwrite(motion_control_override_queue, &override_command);
+
+    bool recovery_reversing = false;
+    xQueuePeek(motion_control_recovery_reversing_queue, &recovery_reversing, 0);
+
+    if (recovery_reversing) {
+        // A mismatch-recovery reverse is not a pickup manoeuvre.  Keep the
+        // intake out of the way until MotionControlTask declares it complete.
+        bool intake_position = true;
+        xQueueOverwrite(intake_position_queue, &intake_position);
+        return;
+    }
+
+    bool storage_voltage_probe_high = true;
+    xQueuePeek(storage_voltage_probe_queue, &storage_voltage_probe_high, 0);
+
+    if (this->home_return_state == HomeReturnState::Searching && !storage_voltage_probe_high) {
+        // Pin 3 is active-low: LOW means a metal weight is in storage.
+        this->weight_sensed_pose = std::nullopt;
+        this->locked_weight_position = std::nullopt;
+        this->home_return_state = HomeReturnState::ReturningHome;
+    }
+
+    if (this->home_return_state != HomeReturnState::Searching) {
+        if (this->home_return_state == HomeReturnState::ReturningHome) {
+            set_motion_control_path({get_home_path(), 1.0});
+
+            if ((robot_pose.position - get_home_position()).norm() <= HOME_ARRIVAL_DISTANCE_M) {
+                this->home_return_state = HomeReturnState::ReleasingWeights;
+                this->home_return_state_start_time = millis();
+            }
+
+            bool intake_position = true;
+            xQueueOverwrite(intake_position_queue, &intake_position);
+            return;
+        }
+
+        if (this->home_return_state == HomeReturnState::ReleasingWeights) {
+            // DOWN is the existing pickup/release position.  Wait until the
+            // active-low storage probe confirms the metal has left storage.
+            bool intake_position = false;
+            xQueueOverwrite(intake_position_queue, &intake_position);
+
+            if (storage_voltage_probe_high &&
+                millis() - this->home_return_state_start_time >= HOME_DROP_RELEASE_TIME_MS) {
+                bool reset_count = true;
+                xQueueOverwrite(intake_reset_carried_weight_count_queue, &reset_count);
+                this->home_return_state = HomeReturnState::ReverseFromDrop;
+                this->home_return_state_start_time = millis();
+            }
+            return;
+        }
+
+        if (this->home_return_state == HomeReturnState::ReverseFromDrop) {
+            if (millis() - this->home_return_state_start_time >= HOME_DROP_REVERSE_TIME_MS) {
+                this->home_return_state = HomeReturnState::Searching;
+            } else {
+                MotionControlOverride drop_override = MotionControlOverride::HomeDropReverse;
+                xQueueOverwrite(motion_control_override_queue, &drop_override);
+
+                bool intake_position = false;
+                xQueueOverwrite(intake_position_queue, &intake_position);
+                return;
+            }
+        }
+    }
 
     int best_track_index = -1;
     float closest_weight_distance = 5.0;

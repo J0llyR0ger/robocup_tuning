@@ -11,6 +11,7 @@ class MappingTask : public SchedulerTask {
   private:
     OccupancyGridMap occupancy_grid = OccupancyGridMap();
     OccupancyGridGraph occupancy_graph = OccupancyGridGraph(occupancy_grid);
+    Eigen::Vector2f home_position = Eigen::Vector2f::Zero();
 
     std::vector<Eigen::Vector2f> get_path_between_world_points(Eigen::Vector2f start,
                                                                Eigen::Vector2f end);

@@ -6,12 +6,18 @@
 IntakeTask::IntakeTask() : SchedulerTask("intake_task") {}
 
 static const int WEIGHT_DETECTION_DEBOUNCE_MS = 8;
+static bool storage_voltage_probe_initialized = false;
+static bool storage_voltage_probe_last_high = false;
+static uint32_t storage_voltage_probe_last_print_time = 0;
+static const uint32_t STORAGE_VOLTAGE_PROBE_PRINT_INTERVAL_MS = 500;
 
 const int KI = 0x0200;
 
 int angleToNum(float angle) { return 512 + (int)(angle / 0.325); }
 
 void IntakeTask::setup() {
+    Serial.println("INTAKE SETUP START");
+
     Serial7.begin(115200);
 
     left_servo.setTorqueOn();
@@ -25,6 +31,7 @@ void IntakeTask::setup() {
 
     expander.pinMode(ENTRY_CONDUCTION_PIN, INPUT);
     expander.pinMode(ENTRY_SWITCH_PIN, INPUT);
+    expander.pinMode(STORAGE_VOLTAGE_PROBE_PIN, INPUT);
 
     expander.debouncePin(ENTRY_CONDUCTION_PIN);
     expander.debouncePin(ENTRY_SWITCH_PIN);
@@ -80,6 +87,12 @@ void IntakeTask::loop() {
 
     uint16_t pins = readPins();
 
+    bool reset_carried_weight_count;
+    if (xQueueReceive(intake_reset_carried_weight_count_queue, &reset_carried_weight_count, 0) &&
+        reset_carried_weight_count) {
+        this->total_weights = 0;
+    }
+
     bool intake_command;
 
     if (xQueueReceive(intake_position_queue, &intake_command, 0)) {
@@ -88,6 +101,18 @@ void IntakeTask::loop() {
 
     bool conduction_state = (pins & (1 << ENTRY_CONDUCTION_PIN)) == 0;
     bool switch_state = (pins & (1 << ENTRY_SWITCH_PIN)) == 0;
+    bool storage_voltage_probe_high = (pins & (1 << STORAGE_VOLTAGE_PROBE_PIN)) != 0;
+    xQueueOverwrite(storage_voltage_probe_queue, &storage_voltage_probe_high);
+    uint32_t now = millis();
+
+    if (!storage_voltage_probe_initialized ||
+        storage_voltage_probe_high != storage_voltage_probe_last_high ||
+        now - storage_voltage_probe_last_print_time >= STORAGE_VOLTAGE_PROBE_PRINT_INTERVAL_MS) {
+        Serial.println(storage_voltage_probe_high ? "HIGH" : "LOW");
+        storage_voltage_probe_last_high = storage_voltage_probe_high;
+        storage_voltage_probe_initialized = true;
+        storage_voltage_probe_last_print_time = now;
+    }
 
     int time = millis();
 
