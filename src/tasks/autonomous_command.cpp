@@ -25,6 +25,7 @@ static const uint32_t MISSED_WEIGHT_RETRY_DELAY_MS = 5000;
 static const float MISSED_WEIGHT_RADIUS_M = 0.3f;
 // Do not select deposited weights around our saved starting/home position.
 static const float HOME_PICKUP_EXCLUSION_RADIUS_M = 0.65f;
+static const float ENEMY_PICKUP_EXCLUSION_RADIUS_M = 0.65f;
 static const float HOME_ARRIVAL_DISTANCE_M = 0.4f;
 // Allow a stuck arrival despite localization error near the home corner.
 static const float HOME_STUCK_ARRIVAL_DISTANCE_M = 1.2f;
@@ -251,13 +252,19 @@ void AutonomousCommandTask::loop() {
         this->missed_weights.end());
 
     const Eigen::Vector2f home_position = get_home_position();
-    const auto inside_home_pickup_zone = [&home_position](const Eigen::Vector2f &position) {
-        return (position - home_position).norm() <= HOME_PICKUP_EXCLUSION_RADIUS_M;
+    // Bases are at opposite ends of the same short wall. X is the short axis;
+    // mirroring the saved start works with either base assigned as our home.
+    const Eigen::Vector2f enemy_position(FIELD_WIDTH_X_METERS - home_position.x(),
+                                         home_position.y());
+    const auto inside_base_pickup_zone = [&home_position, &enemy_position](
+                                            const Eigen::Vector2f &position) {
+        return (position - home_position).norm() <= HOME_PICKUP_EXCLUSION_RADIUS_M ||
+               (position - enemy_position).norm() <= ENEMY_PICKUP_EXCLUSION_RADIUS_M;
     };
     if ((this->locked_weight_position.has_value() &&
-         inside_home_pickup_zone(this->locked_weight_position.value())) ||
+         inside_base_pickup_zone(this->locked_weight_position.value())) ||
         (this->approached_weight_position.has_value() &&
-         inside_home_pickup_zone(this->approached_weight_position.value()))) {
+         inside_base_pickup_zone(this->approached_weight_position.value()))) {
         this->locked_weight_position = std::nullopt;
         this->approached_weight_position = std::nullopt;
         this->pickup_attempt_rails_down = false;
@@ -279,7 +286,7 @@ void AutonomousCommandTask::loop() {
 
     for (size_t track_index = 0; track_index < weight_targets.count; ++track_index) {
         const auto &track = weight_targets.targets[track_index];
-        if (inside_home_pickup_zone(track)) {
+        if (inside_base_pickup_zone(track)) {
             continue;
         }
 
