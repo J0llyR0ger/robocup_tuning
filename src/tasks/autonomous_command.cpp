@@ -21,7 +21,7 @@ static const uint32_t REAL_WEIGHT_RAIL_RAISE_TIMEOUT_MS = 750;
 // Scale forward drive during the time-limited final pickup and drive-through.
 static const float PICKUP_DRIVE_MULTIPLIER = 1.5f;
 static const uint32_t WEIGHT_APPROACH_TIMEOUT_MS = 8000;
-static const uint32_t MISSED_WEIGHT_RETRY_DELAY_MS = 10000;
+static const uint32_t MISSED_WEIGHT_RETRY_DELAY_MS = 5000;
 static const float MISSED_WEIGHT_RADIUS_M = 0.3f;
 // Do not select deposited weights around our saved starting/home position.
 static const float HOME_PICKUP_EXCLUSION_RADIUS_M = 0.65f;
