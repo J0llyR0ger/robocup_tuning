@@ -18,9 +18,13 @@ static const uint32_t DUMMY_WEIGHT_RETRIGGER_TIMEOUT_MS = 3000;
 static const uint32_t PICKUP_ATTEMPT_TIMEOUT_MS = 2000;
 // Raise loaded rails even when friction prevents the normal 20 cm drive-through.
 static const uint32_t REAL_WEIGHT_RAIL_RAISE_TIMEOUT_MS = 750;
+// Scale forward drive during the time-limited final pickup and drive-through.
+static const float PICKUP_DRIVE_MULTIPLIER = 1.5f;
 static const uint32_t WEIGHT_APPROACH_TIMEOUT_MS = 8000;
 static const uint32_t MISSED_WEIGHT_RETRY_DELAY_MS = 10000;
 static const float MISSED_WEIGHT_RADIUS_M = 0.3f;
+// Do not select deposited weights around our saved starting/home position.
+static const float HOME_PICKUP_EXCLUSION_RADIUS_M = 0.65f;
 static const float HOME_ARRIVAL_DISTANCE_M = 0.4f;
 // Allow a stuck arrival despite localization error near the home corner.
 static const float HOME_STUCK_ARRIVAL_DISTANCE_M = 1.2f;
@@ -246,6 +250,19 @@ void AutonomousCommandTask::loop() {
                        }),
         this->missed_weights.end());
 
+    const Eigen::Vector2f home_position = get_home_position();
+    const auto inside_home_pickup_zone = [&home_position](const Eigen::Vector2f &position) {
+        return (position - home_position).norm() <= HOME_PICKUP_EXCLUSION_RADIUS_M;
+    };
+    if ((this->locked_weight_position.has_value() &&
+         inside_home_pickup_zone(this->locked_weight_position.value())) ||
+        (this->approached_weight_position.has_value() &&
+         inside_home_pickup_zone(this->approached_weight_position.value()))) {
+        this->locked_weight_position = std::nullopt;
+        this->approached_weight_position = std::nullopt;
+        this->pickup_attempt_rails_down = false;
+    }
+
     // Release failed targets before selection so a fresh path is published this loop.
     if (this->locked_weight_position.has_value()) {
         if (now - this->pickup_attempt_start_time >= PICKUP_ATTEMPT_TIMEOUT_MS ||
@@ -262,6 +279,9 @@ void AutonomousCommandTask::loop() {
 
     for (size_t track_index = 0; track_index < weight_targets.count; ++track_index) {
         const auto &track = weight_targets.targets[track_index];
+        if (inside_home_pickup_zone(track)) {
+            continue;
+        }
 
         bool previously_failed = false;
 
@@ -298,17 +318,19 @@ void AutonomousCommandTask::loop() {
         auto sensed_pose = this->weight_sensed_pose.value();
 
         set_motion_control_path(
-            {{sensed_pose.position + sensed_pose.get_direction_vector() * 1.0}, 1.0});
+            {{sensed_pose.position + sensed_pose.get_direction_vector() * 1.0}, PICKUP_DRIVE_MULTIPLIER});
 
         if ((sensed_pose.position - robot_pose.position).norm() > 0.2 ||
             millis() - this->real_weight_detected_time >= REAL_WEIGHT_RAIL_RAISE_TIMEOUT_MS) {
             this->weight_sensed_pose = std::nullopt;
+            set_motion_control_path(
+                {{sensed_pose.position + sensed_pose.get_direction_vector() * 1.0}, 1.0});
             intake_position = true;
         } else {
             intake_position = false;
         }
     } else if (this->locked_weight_position.has_value()) {
-        set_motion_control_path({{this->locked_weight_position.value()}, 1.0});
+        set_motion_control_path({{this->locked_weight_position.value()}, PICKUP_DRIVE_MULTIPLIER});
         intake_position = false;
     } else if (best_track_index >= 0) {
         const auto &best_track = weight_targets.targets[best_track_index];
@@ -326,6 +348,7 @@ void AutonomousCommandTask::loop() {
         float speed = 1.0;
 
         if ((best_track - locking_center).norm() < 0.3) {
+            speed = PICKUP_DRIVE_MULTIPLIER;
             this->locked_weight_position = best_track;
             this->pickup_attempt_rails_down = true;
             this->pickup_attempt_start_time = millis();
