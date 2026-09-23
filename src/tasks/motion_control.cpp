@@ -12,15 +12,18 @@
 
 //------- Joel edits -------
 static const uint32_t STUCK_TIME_MS = 120;
+static const uint32_t STUCK_RECOVERY_STARTUP_DELAY_MS = 3000;
 static const uint32_t REVERSE_TIME_MS = 1400;
 
 static const float REVERSE_COMMAND = 0.20;
 static const float DUMMY_WEIGHT_REVERSE_SPEED = 0.20f;
 static const float HOME_DROP_REVERSE_SPEED = 0.20f;
-// Limit the faster, outside wheel during normal forward path turns.  Lowering
-// this makes turns more aggressive; keep it below the full-drive limit.
-static const float OUTSIDE_WHEEL_MAX_TURN_SPEED = 0.9f;
+// Extra inner-wheel reduction per unit of steering command during forward arcs.
+// Increase for tighter turns; zero leaves the standard drive/turn mix unchanged.
+static const float INNER_WHEEL_TURN_REDUCTION = 0.4f;
 
+static uint32_t motion_control_start_time = 0;
+static bool stuck_recovery_enabled = false;
 static bool stuck_timer_running = false;
 static bool reversing = false;
 
@@ -41,7 +44,12 @@ MotionControlTask::MotionControlTask()
                    .with_output_limits(-2.0, 2.0)
                    .with_integral_bounds(-30 * DEG_TO_RAD, 30 * DEG_TO_RAD)) {}
 
-void MotionControlTask::setup() {}
+void MotionControlTask::setup() {
+    motion_control_start_time = millis();
+    stuck_recovery_enabled = false;
+    stuck_timer_running = false;
+    reversing = false;
+}
 
 void MotionControlTask::loop() {
     MotionControlOverride new_override;
@@ -69,7 +77,19 @@ void MotionControlTask::loop() {
     bool motion_mismatch = get_robot_motion_mismatch();
     uint32_t now = millis();
 
-    if (!reversing) {
+    // Enable once after startup; do not accumulate stuck time during the delay.
+    if (!stuck_recovery_enabled &&
+        now - motion_control_start_time >= STUCK_RECOVERY_STARTUP_DELAY_MS) {
+        stuck_recovery_enabled = true;
+    }
+
+    if (motion_override == MotionControlOverride::HomeDropHold ||
+        motion_override == MotionControlOverride::HomeDropReverse) {
+        reversing = false;
+        stuck_timer_running = false;
+    } else if (!stuck_recovery_enabled) {
+        stuck_timer_running = false;
+    } else if (!reversing) {
         if (motion_mismatch) {
             if (!stuck_timer_running) {
                 stuck_timer_running = true;
@@ -101,7 +121,10 @@ void MotionControlTask::loop() {
 
     // Autonomous dummy rejection takes precedence over path following (and the
     // normal stuck-recovery reverse) while the intake sequence is active.
-    if (motion_override == MotionControlOverride::DummyWeightReverse) {
+    if (motion_override == MotionControlOverride::HomeDropHold) {
+        left_drive = 0.0f;
+        right_drive = 0.0f;
+    } else if (motion_override == MotionControlOverride::DummyWeightReverse) {
         left_drive = -DUMMY_WEIGHT_REVERSE_SPEED;
         right_drive = -DUMMY_WEIGHT_REVERSE_SPEED;
     } else if (motion_override == MotionControlOverride::HomeDropReverse) {
@@ -109,22 +132,23 @@ void MotionControlTask::loop() {
         right_drive = -HOME_DROP_REVERSE_SPEED;
     }
 
+    // Tighten forward arcs by slowing the inner wheel in proportion to steering.
+    // Preserve reverse overrides, recovery, and turns with a wheel already reversing.
+    if (motion_override == MotionControlOverride::None && !reversing &&
+        drive_output > 0.0f && left_drive >= 0.0f && right_drive >= 0.0f) {
+        float reduction = INNER_WHEEL_TURN_REDUCTION * fabs(turn_output);
+        if (turn_output > 0.0f) {
+            right_drive = fmax(0.0f, right_drive - reduction);
+        } else if (turn_output < 0.0f) {
+            left_drive = fmax(0.0f, left_drive - reduction);
+        }
+    }
+
     float largest_cmd = fabs(fmax(left_drive, right_drive));
 
     if (largest_cmd > 1.0) {
         left_drive = left_drive / largest_cmd;
         right_drive = right_drive / largest_cmd;
-    }
-
-    // With left_drive = drive + turn and right_drive = drive - turn, the sign
-    // of turn_output identifies the outside wheel for a forward turn.  Apply
-    // this after normalization so the limit is the actual motor command.
-    if (motion_override == MotionControlOverride::None) {
-        if (turn_output > 0.0f) {
-            left_drive = fmin(left_drive, OUTSIDE_WHEEL_MAX_TURN_SPEED);
-        } else if (turn_output < 0.0f) {
-            right_drive = fmin(right_drive, OUTSIDE_WHEEL_MAX_TURN_SPEED);
-        }
     }
 
     std::tuple<float, float> commands = std::make_tuple(left_drive, right_drive);

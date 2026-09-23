@@ -13,4 +13,5 @@ static const int RIGHT_MOTOR_ENCODER_PIN_B = 3;
 // Weight Detection
 static const int ENTRY_CONDUCTION_PIN = 0; // Not teensy pins, GPIO expansion pins
 static const int ENTRY_SWITCH_PIN = 1;
+static const int UPSIDE_DOWN_WEIGHT_SWITCH_PIN = 2;
 static const int STORAGE_VOLTAGE_PROBE_PIN = 3;

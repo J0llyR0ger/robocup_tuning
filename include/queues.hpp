@@ -35,6 +35,7 @@ enum class MotionControlOverride : uint8_t {
     None,
     DummyWeightReverse,
     HomeDropReverse,
+    HomeDropHold,
 };
 
 inline QueueHandle_t motion_control_override_queue =

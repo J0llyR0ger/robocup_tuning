@@ -31,10 +31,12 @@ void IntakeTask::setup() {
 
     expander.pinMode(ENTRY_CONDUCTION_PIN, INPUT);
     expander.pinMode(ENTRY_SWITCH_PIN, INPUT);
+    expander.pinMode(UPSIDE_DOWN_WEIGHT_SWITCH_PIN, INPUT);
     expander.pinMode(STORAGE_VOLTAGE_PROBE_PIN, INPUT);
 
     expander.debouncePin(ENTRY_CONDUCTION_PIN);
     expander.debouncePin(ENTRY_SWITCH_PIN);
+    expander.debouncePin(UPSIDE_DOWN_WEIGHT_SWITCH_PIN);
 
     expander.debounceTime(WEIGHT_DETECTION_DEBOUNCE_MS);
 
@@ -101,6 +103,7 @@ void IntakeTask::loop() {
 
     bool conduction_state = (pins & (1 << ENTRY_CONDUCTION_PIN)) == 0;
     bool switch_state = (pins & (1 << ENTRY_SWITCH_PIN)) == 0;
+    bool upside_down_state = (pins & (1 << UPSIDE_DOWN_WEIGHT_SWITCH_PIN)) == 0;
     bool storage_voltage_probe_high = (pins & (1 << STORAGE_VOLTAGE_PROBE_PIN)) != 0;
     xQueueOverwrite(storage_voltage_probe_queue, &storage_voltage_probe_high);
     uint32_t now = millis();
@@ -118,7 +121,21 @@ void IntakeTask::loop() {
 
     if (conduction_state) {
         this->last_conduction_time = time;
+    }
 
+    // Upside-down metal is rejected just like a non-conductive dummy. Keep the
+    // classification latched until the object clears both switches and the probe.
+    if (upside_down_state) {
+        if (weight_intake_state != WeightIntakeState::DummyWeightDetected) {
+            if (weight_intake_state == WeightIntakeState::RealWeightDetected && total_weights > 0) {
+                --total_weights;
+            }
+            weight_intake_state = WeightIntakeState::DummyWeightDetected;
+            set_position(false);
+            bool val = false;
+            xQueueSend(intake_entry_queue, &val, 0);
+        }
+    } else if (conduction_state && weight_intake_state != WeightIntakeState::DummyWeightDetected) {
         if (weight_intake_state != WeightIntakeState::RealWeightDetected) {
             weight_intake_state = WeightIntakeState::RealWeightDetected;
             total_weights++;
@@ -159,7 +176,8 @@ void IntakeTask::loop() {
     }
     case WeightIntakeState::RealWeightDetected:
     case WeightIntakeState::DummyWeightDetected:
-        if (!switch_state && time - last_conduction_time > CONDUCTION_DEBOUNCER_TIME) {
+        if (!switch_state && !upside_down_state &&
+            time - last_conduction_time > CONDUCTION_DEBOUNCER_TIME) {
             weight_intake_state = WeightIntakeState::None;
         }
         break;
