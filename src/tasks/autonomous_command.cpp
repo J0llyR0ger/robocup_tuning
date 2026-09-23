@@ -16,13 +16,17 @@ static const uint32_t DUMMY_WEIGHT_RETRIGGER_TIMEOUT_MS = 3000;
 // raise the rails before it reaches the intake switch.  This is only a failsafe
 // for a missed target; either intake entry clears it immediately.
 static const uint32_t PICKUP_ATTEMPT_TIMEOUT_MS = 2000;
+// Raise loaded rails even when friction prevents the normal 20 cm drive-through.
+static const uint32_t REAL_WEIGHT_RAIL_RAISE_TIMEOUT_MS = 750;
 static const uint32_t WEIGHT_APPROACH_TIMEOUT_MS = 8000;
 static const uint32_t MISSED_WEIGHT_RETRY_DELAY_MS = 10000;
 static const float MISSED_WEIGHT_RADIUS_M = 0.3f;
-static const float HOME_ARRIVAL_DISTANCE_M = 0.9f;
+static const float HOME_ARRIVAL_DISTANCE_M = 0.4f;
 // Allow a stuck arrival despite localization error near the home corner.
 static const float HOME_STUCK_ARRIVAL_DISTANCE_M = 1.2f;
 static const float HOME_PROGRESS_DISTANCE_M = 0.05f;
+// Retain near-home progress history through modest localization jitter.
+static const float HOME_STUCK_EXIT_DISTANCE_M = 1.5f;
 static const uint32_t HOME_STUCK_TIMEOUT_MS = 1500;
 static const uint32_t HOME_DROP_RELEASE_TIME_MS = 1000;
 static const uint32_t HOME_DROP_REVERSE_TIME_MS = 2500;
@@ -30,10 +34,13 @@ static const uint32_t HOME_DROP_REVERSE_TIME_MS = 2500;
 void AutonomousCommandTask::setup() {}
 
 void AutonomousCommandTask::ignore_locked_weight() {
-    if (this->locked_weight_position.has_value()) {
-        this->failed_weight_positions.push_back(this->locked_weight_position.value());
-        this->locked_weight_position = std::nullopt;
+    const auto rejected_position = this->locked_weight_position.has_value()
+        ? this->locked_weight_position : this->intake_weight_position;
+    if (rejected_position.has_value()) {
+        this->failed_weight_positions.push_back(rejected_position.value());
     }
+    this->locked_weight_position = std::nullopt;
+    this->intake_weight_position = std::nullopt;
 }
 
 void AutonomousCommandTask::defer_missed_weight(const Eigen::Vector2f &position) {
@@ -49,9 +56,9 @@ void AutonomousCommandTask::loop() {
 
     Eigen::Vector2f locking_center = robot_pose.position + robot_pose.get_direction_vector() * 0.5;
 
-    WeightTrackingPayload weight_targets;
+    WeightTrackingPayload weight_targets{};
 
-    xQueuePeek(weight_tracking_queue, &weight_targets, portMAX_DELAY);
+    xQueuePeek(weight_tracking_queue, &weight_targets, 0);
 
     bool is_real;
 
@@ -60,6 +67,17 @@ void AutonomousCommandTask::loop() {
     // triggered again while reversing, which is the point at which the rails can
     // safely move to storage.
     if (xQueueReceive(intake_entry_queue, &is_real, 0)) {
+        // Preserve the object's coordinate if metal detection precedes rejection.
+        // With no tracked target, use the estimated intake location.
+        if (this->dummy_weight_rejection_state == DummyWeightRejectionState::Idle) {
+            if (this->locked_weight_position.has_value()) {
+                this->intake_weight_position = this->locked_weight_position;
+            } else if (this->approached_weight_position.has_value()) {
+                this->intake_weight_position = this->approached_weight_position;
+            } else if (is_real || !this->intake_weight_position.has_value()) {
+                this->intake_weight_position = locking_center;
+            }
+        }
         this->pickup_attempt_rails_down = false;
         this->approached_weight_position = std::nullopt;
         if (!is_real) {
@@ -79,6 +97,7 @@ void AutonomousCommandTask::loop() {
             this->dummy_weight_rejection_start_time = millis();
         } else if (is_real) {
             this->weight_sensed_pose = robot_pose;
+            this->real_weight_detected_time = millis();
             this->locked_weight_position = std::nullopt;
         }
     }
@@ -127,13 +146,18 @@ void AutonomousCommandTask::loop() {
     bool storage_voltage_probe_high = true;
     xQueuePeek(storage_voltage_probe_queue, &storage_voltage_probe_high, 0);
 
-    if (this->home_return_state == HomeReturnState::Searching && !storage_voltage_probe_high) {
-        // Pin 3 is active-low: LOW means a metal weight is in storage.
+    uint8_t total_weights_carried = 0;
+    xQueuePeek(carried_weight_count, &total_weights_carried, 0);
+    const bool full_by_count = total_weights_carried >= 4 && !this->weight_sensed_pose.has_value();
+    if (this->home_return_state == HomeReturnState::Searching &&
+        (!storage_voltage_probe_high || full_by_count)) {
+        // Both storage detection and a full count must run the complete drop sequence.
+        Serial.println("HOME: returning");
         this->weight_sensed_pose = std::nullopt;
         this->locked_weight_position = std::nullopt;
         this->approached_weight_position = std::nullopt;
         this->pickup_attempt_rails_down = false;
-        this->home_progress_position = std::nullopt;
+        this->home_best_distance = std::nullopt;
         this->home_return_state = HomeReturnState::ReturningHome;
     }
 
@@ -144,23 +168,27 @@ void AutonomousCommandTask::loop() {
             const float home_distance = (robot_pose.position - get_home_position()).norm();
             const uint32_t home_now = millis();
             const bool near_home = home_distance <= HOME_STUCK_ARRIVAL_DISTANCE_M;
-            if (!near_home) {
-                this->home_progress_position = std::nullopt;
-            } else if (!this->home_progress_position.has_value() ||
-                       (robot_pose.position - this->home_progress_position.value()).norm() >=
-                           HOME_PROGRESS_DISTANCE_M) {
-                this->home_progress_position = robot_pose.position;
+            if (home_distance > HOME_STUCK_EXIT_DISTANCE_M) {
+                this->home_best_distance = std::nullopt;
+            } else if (near_home && !this->home_best_distance.has_value()) {
+                this->home_best_distance = home_distance;
+                this->home_progress_start_time = home_now;
+            } else if (this->home_best_distance.has_value() &&
+                       home_distance <= this->home_best_distance.value() - HOME_PROGRESS_DISTANCE_M) {
+                // Only actual progress toward home restarts the deadline.
+                this->home_best_distance = home_distance;
                 this->home_progress_start_time = home_now;
             }
-            const bool stuck_near_home = near_home &&
+            const bool stuck_near_home = this->home_best_distance.has_value() &&
                 (recovery_reversing ||
-                 (this->home_progress_position.has_value() &&
-                  home_now - this->home_progress_start_time >= HOME_STUCK_TIMEOUT_MS));
+                 home_now - this->home_progress_start_time >= HOME_STUCK_TIMEOUT_MS);
 
             if (home_distance <= HOME_ARRIVAL_DISTANCE_M || stuck_near_home) {
+                Serial.printf("HOME: releasing, distance=%.2f m, stuck=%d\n",
+                              home_distance, stuck_near_home);
                 this->home_return_state = HomeReturnState::ReleasingWeights;
                 this->home_return_state_start_time = home_now;
-                this->home_progress_position = std::nullopt;
+                this->home_best_distance = std::nullopt;
             } else {
                 bool intake_position = true;
                 xQueueOverwrite(intake_position_queue, &intake_position);
@@ -264,25 +292,16 @@ void AutonomousCommandTask::loop() {
         }
     }
 
-    uint8_t total_weights_carried;
-
-    xQueuePeek(carried_weight_count, &total_weights_carried, portMAX_DELAY);
-
     bool intake_position = false;
 
-    if (total_weights_carried >= 4 && !this->weight_sensed_pose.has_value()) {
-        this->approached_weight_position = std::nullopt;
-        this->locked_weight_position = std::nullopt;
-        this->pickup_attempt_rails_down = false;
-        set_motion_control_path({get_home_path(), 1.0});
-        intake_position = true;
-    } else if (this->weight_sensed_pose.has_value()) {
+    if (this->weight_sensed_pose.has_value()) {
         auto sensed_pose = this->weight_sensed_pose.value();
 
         set_motion_control_path(
             {{sensed_pose.position + sensed_pose.get_direction_vector() * 1.0}, 1.0});
 
-        if ((sensed_pose.position - robot_pose.position).norm() > 0.2) {
+        if ((sensed_pose.position - robot_pose.position).norm() > 0.2 ||
+            millis() - this->real_weight_detected_time >= REAL_WEIGHT_RAIL_RAISE_TIMEOUT_MS) {
             this->weight_sensed_pose = std::nullopt;
             intake_position = true;
         } else {
@@ -293,6 +312,8 @@ void AutonomousCommandTask::loop() {
         intake_position = false;
     } else if (best_track_index >= 0) {
         const auto &best_track = weight_targets.targets[best_track_index];
+        // A new approach supersedes the previously collected object's location.
+        this->intake_weight_position = std::nullopt;
 
         // Keep the deadline for the same target despite small tracking movements.
         if (!this->approached_weight_position.has_value() ||

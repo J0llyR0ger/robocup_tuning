@@ -24,6 +24,8 @@ class AutonomousCommandTask : public SchedulerTask {
     };
 
     std::optional<Pose> weight_sensed_pose = std::nullopt;
+    uint32_t real_weight_detected_time = 0;
+    std::optional<Eigen::Vector2f> intake_weight_position = std::nullopt;
     std::optional<Eigen::Vector2f> locked_weight_position = std::nullopt;
     // These remain in the map; they are only excluded from autonomous selection.
     std::vector<Eigen::Vector2f> failed_weight_positions;
@@ -44,7 +46,7 @@ class AutonomousCommandTask : public SchedulerTask {
     uint32_t pickup_attempt_start_time = 0;
     HomeReturnState home_return_state = HomeReturnState::Searching;
     uint32_t home_return_state_start_time = 0;
-    std::optional<Eigen::Vector2f> home_progress_position = std::nullopt;
+    std::optional<float> home_best_distance = std::nullopt;
     uint32_t home_progress_start_time = 0;
 
     void ignore_locked_weight();

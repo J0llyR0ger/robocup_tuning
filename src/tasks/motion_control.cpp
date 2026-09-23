@@ -6,10 +6,10 @@
 #define DRIVE_KP 25e-1 //alex 40e-1
 #define DRIVE_KI 0 // 20e-4
 
-#define TURN_KP 1.5//alex - 1
+#define TURN_KP 1.4//alex - 1
 #define TURN_KI 0
 #define TURN_KD 50e-2 //alex - 30e-2
-
+       
 //------- Joel edits -------
 static const uint32_t STUCK_TIME_MS = 120;
 static const uint32_t STUCK_RECOVERY_STARTUP_DELAY_MS = 3000;
@@ -20,7 +20,7 @@ static const float DUMMY_WEIGHT_REVERSE_SPEED = 0.20f;
 static const float HOME_DROP_REVERSE_SPEED = 0.20f;
 // Extra inner-wheel reduction per unit of steering command during forward arcs.
 // Increase for tighter turns; zero leaves the standard drive/turn mix unchanged.
-static const float INNER_WHEEL_TURN_REDUCTION = 0.4f;
+static const float INNER_WHEEL_TURN_REDUCTION = 0.5f;
 
 static uint32_t motion_control_start_time = 0;
 static bool stuck_recovery_enabled = false;
