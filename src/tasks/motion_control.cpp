@@ -16,8 +16,11 @@ static const uint32_t STUCK_RECOVERY_STARTUP_DELAY_MS = 3000;
 static const uint32_t REVERSE_TIME_MS = 1400;
 
 static const float REVERSE_COMMAND = 0.20;
-static const float DUMMY_WEIGHT_REVERSE_SPEED = 0.20f;
+static const float DUMMY_WEIGHT_REVERSE_SPEED = 0.10f;
 static const float HOME_DROP_REVERSE_SPEED = 0.20f;
+static const float PICKUP_REVERSE_SPEED = 0.20f;
+// Match the original maximum forward pickup command (0.5 * 1.5).
+static const float PICKUP_FORWARD_SPEED = 0.75f;
 // Extra inner-wheel reduction per unit of steering command during forward arcs.
 // Increase for tighter turns; zero leaves the standard drive/turn mix unchanged.
 static const float INNER_WHEEL_TURN_REDUCTION = 0.5f;
@@ -83,8 +86,14 @@ void MotionControlTask::loop() {
         stuck_recovery_enabled = true;
     }
 
-    if (motion_override == MotionControlOverride::HomeDropHold ||
-        motion_override == MotionControlOverride::HomeDropReverse) {
+    if (motion_override == MotionControlOverride::DummyWeightReverse ||
+        motion_override == MotionControlOverride::DummyWeightHold ||
+        motion_override == MotionControlOverride::DummyWeightClearanceReverse ||
+        motion_override == MotionControlOverride::HomeDropHold ||
+        motion_override == MotionControlOverride::HomeDropReverse ||
+        motion_override == MotionControlOverride::PickupReverse ||
+        motion_override == MotionControlOverride::PickupHold ||
+        motion_override == MotionControlOverride::PickupForward) {
         reversing = false;
         stuck_timer_running = false;
     } else if (!stuck_recovery_enabled) {
@@ -121,10 +130,17 @@ void MotionControlTask::loop() {
 
     // Autonomous dummy rejection takes precedence over path following (and the
     // normal stuck-recovery reverse) while the intake sequence is active.
-    if (motion_override == MotionControlOverride::HomeDropHold) {
+    if (motion_override == MotionControlOverride::PickupReverse) {
+        left_drive = right_drive = -PICKUP_REVERSE_SPEED;
+    } else if (motion_override == MotionControlOverride::PickupForward) {
+        left_drive = right_drive = PICKUP_FORWARD_SPEED;
+    } else if (motion_override == MotionControlOverride::DummyWeightHold ||
+               motion_override == MotionControlOverride::HomeDropHold ||
+               motion_override == MotionControlOverride::PickupHold) {
         left_drive = 0.0f;
         right_drive = 0.0f;
-    } else if (motion_override == MotionControlOverride::DummyWeightReverse) {
+    } else if (motion_override == MotionControlOverride::DummyWeightReverse ||
+               motion_override == MotionControlOverride::DummyWeightClearanceReverse) {
         left_drive = -DUMMY_WEIGHT_REVERSE_SPEED;
         right_drive = -DUMMY_WEIGHT_REVERSE_SPEED;
     } else if (motion_override == MotionControlOverride::HomeDropReverse) {
@@ -150,6 +166,14 @@ void MotionControlTask::loop() {
         left_drive = left_drive / largest_cmd;
         right_drive = right_drive / largest_cmd;
     }
+
+    // Recovery raises the rails; deliberate release, rejection, and pickup realignment do not.
+    bool force_rails_up = motion_override == MotionControlOverride::DummyWeightHold ||
+                         (left_drive + right_drive < 0.0f &&
+                          motion_override != MotionControlOverride::HomeDropReverse &&
+                          motion_override != MotionControlOverride::DummyWeightReverse &&
+                          motion_override != MotionControlOverride::PickupReverse);
+    xQueueOverwrite(motion_control_force_rails_up_queue, &force_rails_up);
 
     std::tuple<float, float> commands = std::make_tuple(left_drive, right_drive);
 
