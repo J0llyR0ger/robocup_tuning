@@ -12,7 +12,8 @@ class AutonomousCommandTask : public SchedulerTask {
   private:
     enum class DummyWeightRejectionState {
         Idle,
-        ReverseUntilSwitchRetrigger,
+        ReverseUntilRelease,
+        RaisingRails,
         ReverseForClearance,
     };
 
@@ -27,7 +28,6 @@ class AutonomousCommandTask : public SchedulerTask {
     PickupState pickup_state = PickupState::Idle;
     uint32_t pickup_state_start_time = 0;
     bool early_intake_probe_was_active = false;
-    bool early_pickup_waiting_for_entry = false;
 
     std::optional<Pose> weight_sensed_pose = std::nullopt;
     uint32_t real_weight_detected_time = 0;
@@ -47,6 +47,7 @@ class AutonomousCommandTask : public SchedulerTask {
     DummyWeightRejectionState dummy_weight_rejection_state =
         DummyWeightRejectionState::Idle;
     uint32_t dummy_weight_rejection_start_time = 0;
+    uint32_t dummy_weight_lift_start_time = 0;
     uint32_t dummy_weight_clearance_start_time = 0;
     bool pickup_attempt_rails_down = false;
     uint32_t pickup_attempt_start_time = 0;

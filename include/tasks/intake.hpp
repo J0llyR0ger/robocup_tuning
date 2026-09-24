@@ -31,6 +31,21 @@ class IntakeTask : public SchedulerTask {
     bool commanded_rails_up = true;
     void set_position(bool up);
 
+    struct ServoHealth {
+        bool initialized = false;
+        bool responding = false;
+        uint8_t error = 0;
+        uint8_t detail = 0;
+        uint8_t reset_attempts = 0;
+        bool fault_pending = false;
+        uint32_t fault_since = 0;
+    };
+    ServoHealth servo_health[2];
+    bool servo_status_pending = false;
+    uint8_t servo_status_index = 0;
+    uint32_t servo_status_last_request = 0;
+    void monitor_servos();
+
   public:
     int total_weights = 0;
 

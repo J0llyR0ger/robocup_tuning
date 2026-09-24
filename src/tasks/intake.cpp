@@ -73,6 +73,121 @@ void IntakeTask::set_position(bool up) {
     }
 }
 
+// Alternate servos: each is checked twice a second without waiting for a reply.
+static const uint32_t SERVO_STATUS_INTERVAL_MS = 250;
+static const uint32_t SERVO_STATUS_TIMEOUT_MS = 100;
+static const uint32_t SERVO_RESET_DELAY_MS = 2000;
+static const uint8_t SERVO_MAX_RESET_ATTEMPTS = 3;
+static const uint8_t RAIL_SERVO_IDS[] = {3, 2};
+static const char *RAIL_SERVO_NAMES[] = {"left", "right"};
+
+static void print_servo_health(uint8_t index, uint8_t error, uint8_t detail) {
+    Serial.printf("RAIL SERVO %s id=%u error=0x%02X detail=0x%02X motor=%s:",
+                  RAIL_SERVO_NAMES[index], RAIL_SERVO_IDS[index], error, detail,
+                  (detail & 0x40) ? "ON" : "OFF");
+    if (error & 0x01) Serial.print(" INPUT_VOLTAGE");
+    if (error & 0x02) Serial.print(" POSITION_LIMIT");
+    if (error & 0x04) Serial.print(" TEMPERATURE_LIMIT");
+    if (error & 0x08) Serial.print(" INVALID_PACKET");
+    if (error & 0x10) Serial.print(" OVERLOAD");
+    if (error & 0x20) Serial.print(" DRIVER_FAULT");
+    if (error & 0x40) Serial.print(" EEPROM_FAULT");
+    if (error & 0x80) Serial.print(" RESERVED_ERROR");
+    if (detail & 0x04) Serial.print(" CHECKSUM_ERROR");
+    if (detail & 0x08) Serial.print(" UNKNOWN_COMMAND");
+    if (detail & 0x10) Serial.print(" REGISTER_RANGE");
+    if (detail & 0x20) Serial.print(" GARBAGE_DETECTED");
+    if (!(detail & 0x40)) Serial.print(" MOTOR_DISABLED");
+    if (!error && !(detail & 0x3C) && (detail & 0x40)) Serial.print(" OK");
+    Serial.println();
+}
+
+void IntakeTask::monitor_servos() {
+    const uint32_t now = millis();
+    // Drain a bounded number of packets, including acknowledgements to movement commands.
+    // Only a valid STAT reply from the requested servo completes a status poll.
+    for (int i = 0; i < 4; ++i) {
+        herkulexBus.update();
+        HerkulexPacket packet{};
+        if (!herkulexBus.getPacket(packet)) break;
+        if (!servo_status_pending || packet.error != HerkulexPacketError::None ||
+            packet.size != 9 || packet.cmd != HerkulexCommand::Stat ||
+            packet.id != RAIL_SERVO_IDS[servo_status_index]) continue;
+
+        auto &health = servo_health[servo_status_index];
+        // Ignore normal moving/in-position changes when deciding whether to log.
+        const uint8_t detail = packet.status_detail & 0xFC;
+        if (!health.initialized || !health.responding ||
+            health.error != packet.status_error || health.detail != detail) {
+            if (health.initialized && !health.responding) {
+                Serial.printf("RAIL SERVO %s id=%u: communication restored\n",
+                              RAIL_SERVO_NAMES[servo_status_index], packet.id);
+            }
+            print_servo_health(servo_status_index, packet.status_error, packet.status_detail);
+        }
+        health.initialized = true;
+        health.responding = true;
+        health.error = packet.status_error;
+        health.detail = detail;
+        const bool needs_reset = health.error != 0 || (detail & 0x3C) != 0 || !(detail & 0x40);
+        // Do not re-enable a servo reporting voltage, heat, driver, or EEPROM faults.
+        const bool reset_allowed = (health.error & 0xE5) == 0;
+        if (!needs_reset || !reset_allowed) {
+            health.fault_pending = false;
+        } else if (!health.fault_pending) {
+            health.fault_pending = true;
+            health.fault_since = now;
+        } else if (health.reset_attempts < SERVO_MAX_RESET_ATTEMPTS &&
+                   now - health.fault_since >= SERVO_RESET_DELAY_MS) {
+            auto &servo = servo_status_index == 0 ? left_servo : right_servo;
+            ++health.reset_attempts;
+            health.fault_since = now;
+            Serial.printf("RAIL SERVO %s id=%u: reset attempt %u/%u\n",
+                          RAIL_SERVO_NAMES[servo_status_index], servo.getID(),
+                          health.reset_attempts, SERVO_MAX_RESET_ATTEMPTS);
+            // Clear the two status bytes, re-enable torque, and restore the target.
+            servo.writeRam2(HerkulexRamRegister::StatusError, 0);
+            servo.setTorqueOn();
+            bool up = commanded_rails_up;
+            bool force_up = false;
+            xQueuePeek(motion_control_force_rails_up_queue, &force_up, 0);
+            up = up || force_up;
+            if (servo_status_index == 0) {
+                servo.setPosition(angleToNum(up ? -5.0f : 45.0f), up ? 25 : 5,
+                                  up ? HerkulexLed::Green : HerkulexLed::Blue);
+            } else {
+                servo.setPosition(angleToNum(up ? 25.0f : -25.0f), up ? 25 : 5,
+                                  up ? HerkulexLed::Green : HerkulexLed::Blue);
+            }
+            // Only later valid status replies can confirm recovery.
+            if (health.reset_attempts == SERVO_MAX_RESET_ATTEMPTS) {
+                Serial.printf("RAIL SERVO %s: automatic reset budget exhausted until restart\n",
+                              RAIL_SERVO_NAMES[servo_status_index]);
+            }
+        }
+        servo_status_pending = false;
+        servo_status_index ^= 1;
+    }
+
+    if (servo_status_pending && now - servo_status_last_request >= SERVO_STATUS_TIMEOUT_MS) {
+        auto &health = servo_health[servo_status_index];
+        if (!health.initialized || health.responding) {
+            Serial.printf("RAIL SERVO %s id=%u: NO VALID STATUS REPLY (fault unknown)\n",
+                          RAIL_SERVO_NAMES[servo_status_index], RAIL_SERVO_IDS[servo_status_index]);
+        }
+        health.initialized = true;
+        health.responding = false;
+        health.fault_pending = false;
+        servo_status_pending = false;
+        servo_status_index ^= 1;
+    }
+    if (!servo_status_pending && now - servo_status_last_request >= SERVO_STATUS_INTERVAL_MS) {
+        herkulexBus.sendPacket(RAIL_SERVO_IDS[servo_status_index], HerkulexCommand::Stat);
+        servo_status_last_request = now;
+        servo_status_pending = true;
+    }
+}
+
 const int IO_EXPANDER_ADDRESS = 0x3E;
 const int PIN_INPUT_STATE_ADDRESS = 0x10;
 
@@ -99,7 +214,7 @@ uint16_t readPins() {
 }
 
 void IntakeTask::loop() {
-    herkulexBus.update();
+    monitor_servos();
 
     uint16_t pins = readPins();
     bool early_probe_active = (pins & (1 << EARLY_INTAKE_PROBE_PIN)) == 0;
@@ -124,6 +239,8 @@ void IntakeTask::loop() {
     bool conduction_state = (pins & (1 << ENTRY_CONDUCTION_PIN)) == 0;
     bool switch_state = (pins & (1 << ENTRY_SWITCH_PIN)) == 0;
     bool upside_down_state = (pins & (1 << UPSIDE_DOWN_WEIGHT_SWITCH_PIN)) == 0;
+    bool release_clear = !conduction_state && !switch_state && !upside_down_state;
+    xQueueOverwrite(intake_release_clear_queue, &release_clear);
     bool storage_voltage_probe_high = (pins & (1 << STORAGE_VOLTAGE_PROBE_PIN)) != 0;
     xQueueOverwrite(storage_voltage_probe_queue, &storage_voltage_probe_high);
     uint32_t now = millis();

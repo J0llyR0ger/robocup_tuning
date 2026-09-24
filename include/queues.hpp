@@ -34,6 +34,8 @@ inline QueueHandle_t motionControl_ChassisCommandsQueue =
 enum class MotionControlOverride : uint8_t {
     None,
     DummyWeightReverse,
+    DummyWeightHold,
+    DummyWeightClearanceReverse,
     HomeDropReverse,
     HomeDropHold,
     PickupReverse,
@@ -77,3 +79,6 @@ inline QueueHandle_t storage_voltage_probe_queue = xQueueCreate(1, sizeof(bool))
 
 // True means rule, false means dummy
 inline QueueHandle_t intake_entry_queue = xQueueCreate(10, sizeof(bool));
+
+// True when entry conduction and both intake limit switches are released.
+inline QueueHandle_t intake_release_clear_queue = xQueueCreate(1, sizeof(bool));

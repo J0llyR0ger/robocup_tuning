@@ -7,11 +7,10 @@
 
 AutonomousCommandTask::AutonomousCommandTask() : SchedulerTask("autonomous_command") {}
 
-// This uses the same magnitude as MotionControlTask's existing stuck-recovery
-// reverse.  It is deliberately much slower than normal autonomous driving.
-static const uint32_t DUMMY_WEIGHT_REVERSE_CLEARANCE_MS = 1400;
-// Stop rejection if the departing dummy never triggers the entry switch again.
-static const uint32_t DUMMY_WEIGHT_RETRIGGER_TIMEOUT_MS = 3000;
+// Stop and retain the remaining weights as soon as the entry sensors release.
+static const uint32_t DUMMY_WEIGHT_LIFT_MS = 400;
+static const uint32_t DUMMY_WEIGHT_CLEARANCE_MS = 1400;
+static const uint32_t DUMMY_WEIGHT_RELEASE_TIMEOUT_MS = 3000;
 // Once a target enters the final pickup zone, do not let intermittent tracking
 // raise the rails before it reaches the intake switch.  This is only a failsafe
 // for a missed target; either intake entry clears it immediately.
@@ -21,7 +20,8 @@ static const uint32_t REAL_WEIGHT_RAIL_RAISE_TIMEOUT_MS = 750;
 // Keep rails at intake level through realignment, braking, and forward pickup.
 static const uint32_t PICKUP_BRAKE_MS = 400;
 static const uint32_t PICKUP_REVERSE_MS = 500;
-static const uint32_t PICKUP_FORWARD_MS = 1200;
+// One bounded forward interval at the faster pickup speed; entry does not restart it.
+static const uint32_t PICKUP_FORWARD_MS = 400;
 // Finish the loaded lift before target selection can request rails down again.
 static const uint32_t PICKUP_LIFT_MS = 400;
 // Scale forward drive during the time-limited final pickup and drive-through.
@@ -86,7 +86,6 @@ void AutonomousCommandTask::loop() {
         this->dummy_weight_rejection_state == DummyWeightRejectionState::Idle) {
         this->pickup_state = PickupState::Forward;
         this->pickup_state_start_time = millis();
-        this->early_pickup_waiting_for_entry = true;
         this->intake_weight_position = this->locked_weight_position.has_value()
             ? this->locked_weight_position
             : (this->approached_weight_position.has_value()
@@ -101,9 +100,7 @@ void AutonomousCommandTask::loop() {
 
     bool is_real;
 
-    // A non-conductive switch entry is the intake's existing dummy-weight
-    // determination.  The next such entry is the same switch being released and
-    // triggered again while reversing, which starts the final clearance timer.
+    // A non-conductive or upside-down entry starts dummy rejection.
     if (xQueueReceive(intake_entry_queue, &is_real, 0)) {
         // Preserve the object's coordinate if metal detection precedes rejection.
         // With no tracked target, use the estimated intake location.
@@ -118,14 +115,7 @@ void AutonomousCommandTask::loop() {
         }
         this->pickup_attempt_rails_down = false;
         this->approached_weight_position = std::nullopt;
-        if (is_real && this->early_pickup_waiting_for_entry &&
-            this->pickup_state == PickupState::Forward) {
-            // Give the weight the full drive-through interval after actual entry.
-            this->pickup_state_start_time = millis();
-            this->early_pickup_waiting_for_entry = false;
-        }
         if (!is_real) {
-            this->early_pickup_waiting_for_entry = false;
             // An upside-down switch can reject an object after its metal probe fired.
             this->weight_sensed_pose = std::nullopt;
             this->pickup_state = PickupState::Idle;
@@ -134,14 +124,10 @@ void AutonomousCommandTask::loop() {
         }
 
         if (!is_real && this->dummy_weight_rejection_state ==
-                            DummyWeightRejectionState::ReverseUntilSwitchRetrigger) {
-            this->dummy_weight_rejection_state = DummyWeightRejectionState::ReverseForClearance;
-            this->dummy_weight_clearance_start_time = millis();
-        } else if (!is_real && this->dummy_weight_rejection_state ==
-                                   DummyWeightRejectionState::Idle) {
+                            DummyWeightRejectionState::Idle) {
             this->ignore_locked_weight();
             this->dummy_weight_rejection_state =
-                DummyWeightRejectionState::ReverseUntilSwitchRetrigger;
+                DummyWeightRejectionState::ReverseUntilRelease;
             this->dummy_weight_rejection_start_time = millis();
         } else if (is_real && this->pickup_state == PickupState::Idle &&
                    this->dummy_weight_rejection_state == DummyWeightRejectionState::Idle &&
@@ -172,7 +158,6 @@ void AutonomousCommandTask::loop() {
             Serial.println("PICKUP: forward with rails down");
         } else if (this->pickup_state == PickupState::Forward && elapsed >= PICKUP_FORWARD_MS) {
             this->pickup_state = PickupState::Lifting;
-            this->early_pickup_waiting_for_entry = false;
             this->pickup_state_start_time = now;
             Serial.println("PICKUP: lifting into storage");
         } else if (this->pickup_state == PickupState::Lifting && elapsed >= PICKUP_LIFT_MS) {
@@ -209,32 +194,37 @@ void AutonomousCommandTask::loop() {
         return;
     }
 
-    // A missing second switch event must not latch the reverse override forever.
-    if (this->dummy_weight_rejection_state ==
-            DummyWeightRejectionState::ReverseUntilSwitchRetrigger &&
-        millis() - this->dummy_weight_rejection_start_time >=
-            DUMMY_WEIGHT_RETRIGGER_TIMEOUT_MS) {
-        this->dummy_weight_rejection_state = DummyWeightRejectionState::Idle;
-        MotionControlOverride override_command = MotionControlOverride::None;
-        xQueueOverwrite(motion_control_override_queue, &override_command);
-        bool intake_position = true;
-        xQueueOverwrite(intake_position_queue, &intake_position);
-        return;
-    }
-
     if (this->dummy_weight_rejection_state != DummyWeightRejectionState::Idle) {
-        if (this->dummy_weight_rejection_state ==
-                DummyWeightRejectionState::ReverseForClearance &&
-            millis() - this->dummy_weight_clearance_start_time >=
-                DUMMY_WEIGHT_REVERSE_CLEARANCE_MS) {
+        bool release_clear = false;
+        xQueuePeek(intake_release_clear_queue, &release_clear, 0);
+        const uint32_t now = millis();
+        if (this->dummy_weight_rejection_state == DummyWeightRejectionState::ReverseUntilRelease &&
+            (release_clear || now - this->dummy_weight_rejection_start_time >=
+                                  DUMMY_WEIGHT_RELEASE_TIMEOUT_MS)) {
+            this->dummy_weight_rejection_state = DummyWeightRejectionState::RaisingRails;
+            this->dummy_weight_lift_start_time = now;
+            Serial.println(release_clear ? "DUMMY: released, lifting rails"
+                                         : "DUMMY: release timeout, stopping and lifting");
+        }
+        if (this->dummy_weight_rejection_state == DummyWeightRejectionState::RaisingRails &&
+            now - this->dummy_weight_lift_start_time >= DUMMY_WEIGHT_LIFT_MS) {
+            this->dummy_weight_rejection_state = DummyWeightRejectionState::ReverseForClearance;
+            this->dummy_weight_clearance_start_time = now;
+            Serial.println("DUMMY: reversing clear with rails up");
+        }
+        if (this->dummy_weight_rejection_state == DummyWeightRejectionState::ReverseForClearance &&
+            now - this->dummy_weight_clearance_start_time >= DUMMY_WEIGHT_CLEARANCE_MS) {
             this->dummy_weight_rejection_state = DummyWeightRejectionState::Idle;
         } else {
-            MotionControlOverride override_command = MotionControlOverride::DummyWeightReverse;
-            xQueueOverwrite(motion_control_override_queue, &override_command);
-
-            // Keep rails down through both dummy rejection and reverse clearance.
-            bool intake_position = false;
-            xQueueOverwrite(intake_position_queue, &intake_position);
+            bool rails_up = this->dummy_weight_rejection_state != DummyWeightRejectionState::ReverseUntilRelease;
+            MotionControlOverride rejection_override = MotionControlOverride::DummyWeightReverse;
+            if (this->dummy_weight_rejection_state == DummyWeightRejectionState::RaisingRails) {
+                rejection_override = MotionControlOverride::DummyWeightHold;
+            } else if (this->dummy_weight_rejection_state == DummyWeightRejectionState::ReverseForClearance) {
+                rejection_override = MotionControlOverride::DummyWeightClearanceReverse;
+            }
+            xQueueOverwrite(motion_control_override_queue, &rejection_override);
+            xQueueOverwrite(intake_position_queue, &rails_up);
             return;
         }
     }
