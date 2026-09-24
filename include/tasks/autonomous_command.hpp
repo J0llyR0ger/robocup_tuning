@@ -23,6 +23,12 @@ class AutonomousCommandTask : public SchedulerTask {
         ReverseFromDrop,
     };
 
+    enum class PickupState { Idle, Reversing, Braking, Forward, Lifting };
+    PickupState pickup_state = PickupState::Idle;
+    uint32_t pickup_state_start_time = 0;
+    bool early_intake_probe_was_active = false;
+    bool early_pickup_waiting_for_entry = false;
+
     std::optional<Pose> weight_sensed_pose = std::nullopt;
     uint32_t real_weight_detected_time = 0;
     std::optional<Eigen::Vector2f> intake_weight_position = std::nullopt;

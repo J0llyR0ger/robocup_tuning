@@ -15,3 +15,6 @@ static const int ENTRY_CONDUCTION_PIN = 0; // Not teensy pins, GPIO expansion pi
 static const int ENTRY_SWITCH_PIN = 1;
 static const int UPSIDE_DOWN_WEIGHT_SWITCH_PIN = 2;
 static const int STORAGE_VOLTAGE_PROBE_PIN = 3;
+
+// Additional early intake probe on the SX1509; LOW means weight detected.
+static const int EARLY_INTAKE_PROBE_PIN = 4;

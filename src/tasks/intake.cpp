@@ -33,6 +33,8 @@ void IntakeTask::setup() {
     expander.pinMode(ENTRY_SWITCH_PIN, INPUT);
     expander.pinMode(UPSIDE_DOWN_WEIGHT_SWITCH_PIN, INPUT);
     expander.pinMode(STORAGE_VOLTAGE_PROBE_PIN, INPUT);
+    expander.pinMode(EARLY_INTAKE_PROBE_PIN, INPUT);
+    expander.debouncePin(EARLY_INTAKE_PROBE_PIN);
 
     expander.debouncePin(ENTRY_CONDUCTION_PIN);
     expander.debouncePin(ENTRY_SWITCH_PIN);
@@ -50,6 +52,18 @@ void IntakeTask::setup() {
 }
 
 void IntakeTask::set_position(bool up) {
+    // Guard every servo command, including direct sensor-triggered drops.
+    bool force_rails_up = false;
+    xQueuePeek(motion_control_force_rails_up_queue, &force_rails_up, 0);
+    up = up || force_rails_up;
+
+    // Send each target once so repeated task ticks do not restart a timed move.
+    if (rail_position_commanded && commanded_rails_up == up) {
+        return;
+    }
+    rail_position_commanded = true;
+    commanded_rails_up = up;
+
     if (up) {
         left_servo.setPosition(angleToNum(-5.0), 25, HerkulexLed::Green);
         right_servo.setPosition(angleToNum(25.0), 25, HerkulexLed::Green);
@@ -88,6 +102,8 @@ void IntakeTask::loop() {
     herkulexBus.update();
 
     uint16_t pins = readPins();
+    bool early_probe_active = (pins & (1 << EARLY_INTAKE_PROBE_PIN)) == 0;
+    xQueueOverwrite(early_intake_probe_queue, &early_probe_active);
 
     bool reset_carried_weight_count;
     if (xQueueReceive(intake_reset_carried_weight_count_queue, &reset_carried_weight_count, 0) &&
@@ -95,9 +111,13 @@ void IntakeTask::loop() {
         this->total_weights = 0;
     }
 
-    bool intake_command;
+    bool intake_command = true;
+    bool force_rails_up = false;
+    xQueuePeek(motion_control_force_rails_up_queue, &force_rails_up, 0);
+    const bool has_intake_command = xQueueReceive(intake_position_queue, &intake_command, 0);
 
-    if (xQueueReceive(intake_position_queue, &intake_command, 0)) {
+    // Raise on the next intake tick even without an autonomous command.
+    if (has_intake_command || force_rails_up) {
         set_position(intake_command);
     }
 
@@ -116,6 +136,9 @@ void IntakeTask::loop() {
         storage_voltage_probe_initialized = true;
         storage_voltage_probe_last_print_time = now;
     }
+
+    bool pickup_active = false;
+    xQueuePeek(intake_pickup_active_queue, &pickup_active, 0);
 
     int time = millis();
 
@@ -176,7 +199,10 @@ void IntakeTask::loop() {
     }
     case WeightIntakeState::RealWeightDetected:
     case WeightIntakeState::DummyWeightDetected:
-        if (!switch_state && !upside_down_state &&
+        // Backing away deliberately clears the probe. Keep this weight counted
+        // once until the forward pickup finishes; upside-down rejection still wins.
+        if (!(pickup_active && weight_intake_state == WeightIntakeState::RealWeightDetected) &&
+            !switch_state && !upside_down_state &&
             time - last_conduction_time > CONDUCTION_DEBOUNCER_TIME) {
             weight_intake_state = WeightIntakeState::None;
         }

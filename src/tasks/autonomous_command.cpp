@@ -18,6 +18,12 @@ static const uint32_t DUMMY_WEIGHT_RETRIGGER_TIMEOUT_MS = 3000;
 static const uint32_t PICKUP_ATTEMPT_TIMEOUT_MS = 2000;
 // Raise loaded rails even when friction prevents the normal 20 cm drive-through.
 static const uint32_t REAL_WEIGHT_RAIL_RAISE_TIMEOUT_MS = 750;
+// Keep rails at intake level through realignment, braking, and forward pickup.
+static const uint32_t PICKUP_BRAKE_MS = 400;
+static const uint32_t PICKUP_REVERSE_MS = 500;
+static const uint32_t PICKUP_FORWARD_MS = 1200;
+// Finish the loaded lift before target selection can request rails down again.
+static const uint32_t PICKUP_LIFT_MS = 400;
 // Scale forward drive during the time-limited final pickup and drive-through.
 static const float PICKUP_DRIVE_MULTIPLIER = 1.5f;
 static const uint32_t WEIGHT_APPROACH_TIMEOUT_MS = 8000;
@@ -64,12 +70,40 @@ void AutonomousCommandTask::loop() {
 
     xQueuePeek(weight_tracking_queue, &weight_targets, 0);
 
+    bool early_probe_active = false;
+    xQueuePeek(early_intake_probe_queue, &early_probe_active, 0);
+    const bool early_entry = early_probe_active && !this->early_intake_probe_was_active;
+    this->early_intake_probe_was_active = early_probe_active;
+
+    bool storage_clear = true;
+    uint8_t carried_count = 0;
+    xQueuePeek(storage_voltage_probe_queue, &storage_clear, 0);
+    xQueuePeek(carried_weight_count, &carried_count, 0);
+    // Home return takes priority, including a full load detected this same tick.
+    if (early_entry && storage_clear && carried_count < 4 &&
+        this->home_return_state == HomeReturnState::Searching &&
+        this->pickup_state == PickupState::Idle &&
+        this->dummy_weight_rejection_state == DummyWeightRejectionState::Idle) {
+        this->pickup_state = PickupState::Forward;
+        this->pickup_state_start_time = millis();
+        this->early_pickup_waiting_for_entry = true;
+        this->intake_weight_position = this->locked_weight_position.has_value()
+            ? this->locked_weight_position
+            : (this->approached_weight_position.has_value()
+                ? this->approached_weight_position : std::optional<Eigen::Vector2f>(locking_center));
+        this->locked_weight_position = std::nullopt;
+        this->approached_weight_position = std::nullopt;
+        this->pickup_attempt_rails_down = false;
+        bool pickup_active = true;
+        xQueueOverwrite(intake_pickup_active_queue, &pickup_active);
+        Serial.println("PICKUP: early probe, forward with rails down");
+    }
+
     bool is_real;
 
     // A non-conductive switch entry is the intake's existing dummy-weight
     // determination.  The next such entry is the same switch being released and
-    // triggered again while reversing, which is the point at which the rails can
-    // safely move to storage.
+    // triggered again while reversing, which starts the final clearance timer.
     if (xQueueReceive(intake_entry_queue, &is_real, 0)) {
         // Preserve the object's coordinate if metal detection precedes rejection.
         // With no tracked target, use the estimated intake location.
@@ -84,9 +118,19 @@ void AutonomousCommandTask::loop() {
         }
         this->pickup_attempt_rails_down = false;
         this->approached_weight_position = std::nullopt;
+        if (is_real && this->early_pickup_waiting_for_entry &&
+            this->pickup_state == PickupState::Forward) {
+            // Give the weight the full drive-through interval after actual entry.
+            this->pickup_state_start_time = millis();
+            this->early_pickup_waiting_for_entry = false;
+        }
         if (!is_real) {
+            this->early_pickup_waiting_for_entry = false;
             // An upside-down switch can reject an object after its metal probe fired.
             this->weight_sensed_pose = std::nullopt;
+            this->pickup_state = PickupState::Idle;
+            bool pickup_active = false;
+            xQueueOverwrite(intake_pickup_active_queue, &pickup_active);
         }
 
         if (!is_real && this->dummy_weight_rejection_state ==
@@ -99,11 +143,70 @@ void AutonomousCommandTask::loop() {
             this->dummy_weight_rejection_state =
                 DummyWeightRejectionState::ReverseUntilSwitchRetrigger;
             this->dummy_weight_rejection_start_time = millis();
-        } else if (is_real) {
+        } else if (is_real && this->pickup_state == PickupState::Idle &&
+                   this->dummy_weight_rejection_state == DummyWeightRejectionState::Idle &&
+                   this->home_return_state == HomeReturnState::Searching) {
+            this->pickup_state = PickupState::Reversing;
+            this->pickup_state_start_time = millis();
+            Serial.println("PICKUP: realigning with rails down");
+            bool pickup_active = true;
+            xQueueOverwrite(intake_pickup_active_queue, &pickup_active);
             this->weight_sensed_pose = robot_pose;
             this->real_weight_detected_time = millis();
             this->locked_weight_position = std::nullopt;
         }
+    }
+
+    // Complete the pickup before normal target selection or a count-based home return.
+    // Dummy/upside-down rejection above cancels this sequence immediately.
+    if (this->pickup_state != PickupState::Idle) {
+        const uint32_t now = millis();
+        const uint32_t elapsed = now - this->pickup_state_start_time;
+        if (this->pickup_state == PickupState::Reversing && elapsed >= PICKUP_REVERSE_MS) {
+            this->pickup_state = PickupState::Braking;
+            this->pickup_state_start_time = now;
+            Serial.println("PICKUP: stopping with rails down");
+        } else if (this->pickup_state == PickupState::Braking && elapsed >= PICKUP_BRAKE_MS) {
+            this->pickup_state = PickupState::Forward;
+            this->pickup_state_start_time = now;
+            Serial.println("PICKUP: forward with rails down");
+        } else if (this->pickup_state == PickupState::Forward && elapsed >= PICKUP_FORWARD_MS) {
+            this->pickup_state = PickupState::Lifting;
+            this->early_pickup_waiting_for_entry = false;
+            this->pickup_state_start_time = now;
+            Serial.println("PICKUP: lifting into storage");
+        } else if (this->pickup_state == PickupState::Lifting && elapsed >= PICKUP_LIFT_MS) {
+            this->pickup_state = PickupState::Idle;
+            this->weight_sensed_pose = std::nullopt;
+            bool pickup_active = false;
+            xQueueOverwrite(intake_pickup_active_queue, &pickup_active);
+        }
+
+        MotionControlOverride pickup_override = MotionControlOverride::None;
+        bool rails_up = true;
+        switch (this->pickup_state) {
+        case PickupState::Braking:
+            pickup_override = MotionControlOverride::PickupHold;
+            rails_up = false;
+            break;
+        case PickupState::Lifting:
+            pickup_override = MotionControlOverride::PickupHold;
+            break;
+        case PickupState::Reversing:
+            pickup_override = MotionControlOverride::PickupReverse;
+            rails_up = false;
+            break;
+        case PickupState::Forward:
+            pickup_override = MotionControlOverride::PickupForward;
+            rails_up = false;
+            break;
+        case PickupState::Idle:
+            set_motion_control_path({{}, 0.0});
+            break;
+        }
+        xQueueOverwrite(motion_control_override_queue, &pickup_override);
+        xQueueOverwrite(intake_position_queue, &rails_up);
+        return;
     }
 
     // A missing second switch event must not latch the reverse override forever.
@@ -129,10 +232,8 @@ void AutonomousCommandTask::loop() {
             MotionControlOverride override_command = MotionControlOverride::DummyWeightReverse;
             xQueueOverwrite(motion_control_override_queue, &override_command);
 
-            // The rails stay down until the dummy produces the second entry-switch
-            // event.  The storage command is then held while it is left behind.
-            bool intake_position = this->dummy_weight_rejection_state ==
-                                   DummyWeightRejectionState::ReverseForClearance;
+            // Keep rails down through both dummy rejection and reverse clearance.
+            bool intake_position = false;
             xQueueOverwrite(intake_position_queue, &intake_position);
             return;
         }
@@ -187,7 +288,7 @@ void AutonomousCommandTask::loop() {
                 (recovery_reversing ||
                  home_now - this->home_progress_start_time >= HOME_STUCK_TIMEOUT_MS);
 
-            if (home_distance <= HOME_ARRIVAL_DISTANCE_M || stuck_near_home) {
+            if (home_distance <= HOME_ARRIVAL_DISTANCE_M) {
                 Serial.printf("HOME: releasing, distance=%.2f m, stuck=%d\n",
                               home_distance, stuck_near_home);
                 this->home_return_state = HomeReturnState::ReleasingWeights;

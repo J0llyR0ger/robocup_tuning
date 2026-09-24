@@ -27,6 +27,8 @@ class IntakeTask : public SchedulerTask {
 
     int last_conduction_time = 0;
 
+    bool rail_position_commanded = false;
+    bool commanded_rails_up = true;
     void set_position(bool up);
 
   public:
