@@ -1,5 +1,6 @@
 #include "tasks/autonomous_command.hpp"
 #include "Arduino.h"
+#include "drive_enable.hpp"
 #include "telemetry_bus.hpp"
 #include <mutexes.hpp>
 #include <queues.hpp>
@@ -63,6 +64,27 @@ void AutonomousCommandTask::defer_missed_weight(const Eigen::Vector2f &position)
 }
 
 void AutonomousCommandTask::loop() {
+    if (!drive_enabled.load()) {
+        // Cancel movement sequences without resetting mapping or carried weights.
+        pickup_state = PickupState::Idle;
+        dummy_weight_rejection_state = DummyWeightRejectionState::Idle;
+        home_return_state = HomeReturnState::Searching;
+        pickup_attempt_rails_down = false;
+        weight_sensed_pose.reset();
+        intake_weight_position.reset();
+        locked_weight_position.reset();
+        approached_weight_position.reset();
+        home_best_distance.reset();
+        early_intake_probe_was_active = false;
+        const bool inactive = false;
+        xQueueOverwrite(intake_pickup_active_queue, &inactive);
+        // Sensor events observed while stationary must not trigger old manoeuvres.
+        xQueueReset(intake_entry_queue);
+        set_motion_control_path({{}, 0.0f});
+        const auto no_override = MotionControlOverride::None;
+        xQueueOverwrite(motion_control_override_queue, &no_override);
+        return;
+    }
     auto robot_pose = get_global_pose();
 
     Eigen::Vector2f locking_center = robot_pose.position + robot_pose.get_direction_vector() * 0.5;

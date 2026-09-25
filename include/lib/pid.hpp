@@ -23,6 +23,12 @@ class PIDController {
   public:
     PIDController(float kp, float ki, float kd, float stable_error);
     float update(float error);
+    void reset() {
+        last_timestamp.reset();
+        previous_error = 0.0f;
+        integral_sum = 0.0f;
+        stablized = false;
+    }
     float integral_sum = 0.0;
 
     /**

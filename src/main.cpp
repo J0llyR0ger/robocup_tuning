@@ -1,5 +1,6 @@
 #include "arduino_freertos.h"
 #include "mutexes.hpp"
+#include "tasks/display.hpp"
 #include "tasks/autonomous_command.hpp"
 #include "tasks/imu.hpp"
 #include "tasks/intake.hpp"
@@ -119,6 +120,8 @@ void setup() {
 
     Wire.begin();
     Wire.setClock(400e3);
+
+    start_display_task();
 
     start_tasks_rate_monotonic();
 

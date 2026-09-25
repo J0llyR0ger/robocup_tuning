@@ -1,5 +1,6 @@
 #include "tasks/drive_train.hpp"
 #include "queues.hpp"
+#include "drive_enable.hpp"
 #include "telemetry_bus.hpp"
 #include <mutexes.hpp>
 #include <wiring.h>
@@ -9,6 +10,44 @@ DriveTrainTask::DriveTrainTask() : SchedulerTask("drive_train_task") {}
 void DriveTrainTask::setup() {
     left_motor.attach(LEFT_MOTOR_CONTROL_PIN);
     right_motor.attach(RIGHT_MOTOR_CONTROL_PIN);
+    left_motor.writeMicroseconds(1500);
+    right_motor.writeMicroseconds(1500);
+    drive_enabled.store(false);
+    pinMode(BLUE_BUTTON_PIN, BLUE_BUTTON_ACTIVE_LOW ? INPUT_PULLUP : INPUT_PULLDOWN);
+    button_raw_pressed = digitalRead(BLUE_BUTTON_PIN) ==
+                         (BLUE_BUTTON_ACTIVE_LOW ? LOW : HIGH);
+    button_stable_pressed = button_raw_pressed;
+    button_changed_at = millis();
+    button_armed = false; // Require a stable release, including at boot.
+    last_timestamp = micros();
+    Serial.println("DRIVE: inhibited; press blue to enable");
+}
+
+void DriveTrainTask::update_drive_button() {
+    const uint32_t now = millis();
+    const bool pressed = digitalRead(BLUE_BUTTON_PIN) ==
+                         (BLUE_BUTTON_ACTIVE_LOW ? LOW : HIGH);
+    if (pressed != button_raw_pressed) {
+        button_raw_pressed = pressed;
+        button_changed_at = now;
+    }
+    if (now - button_changed_at < BLUE_BUTTON_DEBOUNCE_MS) return;
+    if (!pressed) button_armed = true;
+    if (pressed == button_stable_pressed) return;
+    button_stable_pressed = pressed;
+    if (pressed && button_armed) {
+        button_armed = false;
+        const bool enabled = !drive_enabled.load();
+        // Discard commands from before this transition.
+        xQueueReset(motionControl_ChassisCommandsQueue);
+        left_command = right_command = 0.0f;
+        left_slew = SlewRate<float>(SLEW_RATE);
+        right_slew = SlewRate<float>(SLEW_RATE);
+        left_motor.writeMicroseconds(1500);
+        right_motor.writeMicroseconds(1500);
+        drive_enabled.store(enabled);
+        Serial.println(enabled ? "DRIVE: enabled" : "DRIVE: inhibited");
+    }
 }
 
 static const int TICKS_PER_REVOLUTION = 2652;
@@ -33,11 +72,18 @@ static float apply_kickoff(float command) {
 }
 
 void DriveTrainTask::loop() {
+    update_drive_button();
     std::tuple<float, float> new_commands;
 
     if (xQueueReceive(motionControl_ChassisCommandsQueue, &new_commands, 0)) {
         this->left_command = std::clamp(std::get<0>(new_commands), -1.0f, 1.0f);
         this->right_command = std::clamp(std::get<1>(new_commands), -1.0f, 1.0f);
+    }
+
+    if (!drive_enabled.load()) {
+        left_command = right_command = 0.0f;
+        left_slew = SlewRate<float>(SLEW_RATE);
+        right_slew = SlewRate<float>(SLEW_RATE);
     }
 
     float left_out = this->left_command;

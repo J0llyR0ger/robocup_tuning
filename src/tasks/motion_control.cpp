@@ -1,5 +1,6 @@
 #include "tasks/motion_control.hpp"
 #include "queues.hpp"
+#include "drive_enable.hpp"
 #include "telemetry_bus.hpp"
 #include <mutexes.hpp>
 
@@ -55,6 +56,22 @@ void MotionControlTask::setup() {
 }
 
 void MotionControlTask::loop() {
+    if (!drive_enabled.load()) {
+        pid_drive.reset();
+        pid_turn.reset();
+        motion_control_start_time = millis();
+        stuck_recovery_enabled = false;
+        stuck_timer_running = false;
+        reversing = false;
+        motion_override = MotionControlOverride::None;
+        xQueueReset(motion_control_override_queue);
+        const bool inactive = false;
+        xQueueOverwrite(motion_control_recovery_reversing_queue, &inactive);
+        xQueueOverwrite(motion_control_force_rails_up_queue, &inactive);
+        const auto neutral = std::make_tuple(0.0f, 0.0f);
+        xQueueOverwrite(motionControl_ChassisCommandsQueue, &neutral);
+        return;
+    }
     MotionControlOverride new_override;
     if (xQueueReceive(motion_control_override_queue, &new_override, 0)) {
         motion_override = new_override;

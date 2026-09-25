@@ -1,5 +1,12 @@
 #pragma once
 
+#include <Arduino.h>
+
+// Blue button on CON70 (A6Z). Change polarity for an active-high module.
+static const int BLUE_BUTTON_PIN = A6;
+static const bool BLUE_BUTTON_ACTIVE_LOW = true;
+static const uint32_t BLUE_BUTTON_DEBOUNCE_MS = 40;
+
 // Motor Control
 static const int LEFT_MOTOR_CONTROL_PIN = 1;
 static const int RIGHT_MOTOR_CONTROL_PIN = 0;

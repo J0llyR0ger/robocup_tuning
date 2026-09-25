@@ -11,6 +11,12 @@ const float SLEW_RATE = 4.0;
 
 class DriveTrainTask : public SchedulerTask {
   private:
+    bool button_raw_pressed = false;
+    bool button_stable_pressed = false;
+    bool button_armed = false;
+    uint32_t button_changed_at = 0;
+    void update_drive_button();
+
     Servo left_motor;
     Servo right_motor;
 
