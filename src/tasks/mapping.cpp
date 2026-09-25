@@ -3,6 +3,7 @@
 #include "lib/path_smoother.hpp"
 #include "telemetry_bus.hpp"
 #include "home_selection.hpp"
+#include "enemy_base.hpp"
 #include <Arduino.h>
 #include <mutexes.hpp>
 #include <queues.hpp>
@@ -61,6 +62,14 @@ void MappingTask::loop() {
     xQueueOverwrite(weight_tracking_queue, &weight_payload);
 
     this->occupancy_graph = OccupancyGridGraph(this->occupancy_grid);
+    // Keep this restriction in the planning graph, not the sensor occupancy map.
+    for (size_t y = 0; y < OccupancyGridMap::GRID_HEIGHT; ++y) {
+        for (size_t x = 0; x < OccupancyGridMap::GRID_WIDTH; ++x) {
+            const Eigen::Vector2f centre((x + 0.5f) * OccupancyGridMap::TILE_SIZE_METERS,
+                                         (y + 0.5f) * OccupancyGridMap::TILE_SIZE_METERS);
+            if (inside_enemy_base(centre)) this->occupancy_graph.blockCell(x, y);
+        }
+    }
 
     float best_frontier_score = 0.0;
 
@@ -68,6 +77,7 @@ void MappingTask::loop() {
 
     for (int i = 0; i < this->occupancy_grid.get_frontier_clusters().size(); i++) {
         auto cluster = this->occupancy_grid.get_frontier_clusters()[i];
+        if (inside_enemy_base(cluster.centroid)) continue;
 
         float distance = (pose.position - cluster.centroid).norm();
 
@@ -92,7 +102,8 @@ void MappingTask::loop() {
     }
 
     auto home_path = get_path_between_world_points(pose.position, this->home_position);
-    if (home_path.empty() && (pose.position - this->home_position).norm() > 0.1f) {
+    if (home_path.empty() && (pose.position - this->home_position).norm() > 0.1f &&
+        !crosses_enemy_base(pose.position, this->home_position)) {
         // A* can temporarily have no route while the occupancy grid is still
         // being populated.  A direct home waypoint keeps return-to-base from
         // becoming a stationary command in that case.
@@ -109,6 +120,7 @@ const OccupancyGridMap &MappingTask::get_occupancy_grid() const { return this->o
 
 std::vector<Eigen::Vector2f> MappingTask::get_path_between_world_points(Eigen::Vector2f start,
                                                                         Eigen::Vector2f end) {
+    if (inside_enemy_base(start) || inside_enemy_base(end)) return {};
     PathSmoother smoother = PathSmoother(this->occupancy_graph);
 
     int startX, startY;
@@ -129,5 +141,11 @@ std::vector<Eigen::Vector2f> MappingTask::get_path_between_world_points(Eigen::V
 
     smoother.smooth(simplified_path, smoothed_path, /*samplesPerSegment=*/8);
 
+    // Reject any spline overshoot into the forbidden area.
+    Eigen::Vector2f previous = start;
+    for (const auto &point : smoothed_path) {
+        if (crosses_enemy_base(previous, point)) return {};
+        previous = point;
+    }
     return smoothed_path;
 }

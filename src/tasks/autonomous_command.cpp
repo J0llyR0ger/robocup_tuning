@@ -2,6 +2,7 @@
 #include "Arduino.h"
 #include "drive_enable.hpp"
 #include "home_selection.hpp"
+#include "enemy_base.hpp"
 #include "telemetry_bus.hpp"
 #include <mutexes.hpp>
 #include <queues.hpp>
@@ -392,10 +393,12 @@ void AutonomousCommandTask::loop() {
     const auto inside_base_pickup_zone = [&home_position, &enemy_position](
                                             const Eigen::Vector2f &position) {
         return (position - home_position).norm() <= HOME_PICKUP_EXCLUSION_RADIUS_M ||
-               (position - enemy_position).norm() <= ENEMY_PICKUP_EXCLUSION_RADIUS_M;
+               (position - enemy_position).norm() <= ENEMY_PICKUP_EXCLUSION_RADIUS_M ||
+               inside_enemy_base(position);
     };
     if ((this->locked_weight_position.has_value() &&
-         inside_base_pickup_zone(this->locked_weight_position.value())) ||
+         (inside_base_pickup_zone(this->locked_weight_position.value()) ||
+          crosses_enemy_base(robot_pose.position, this->locked_weight_position.value()))) ||
         (this->approached_weight_position.has_value() &&
          inside_base_pickup_zone(this->approached_weight_position.value()))) {
         this->locked_weight_position = std::nullopt;
@@ -419,7 +422,7 @@ void AutonomousCommandTask::loop() {
 
     for (size_t track_index = 0; track_index < weight_targets.count; ++track_index) {
         const auto &track = weight_targets.targets[track_index];
-        if (inside_base_pickup_zone(track)) {
+        if (inside_base_pickup_zone(track) || crosses_enemy_base(robot_pose.position, track)) {
             continue;
         }
 

@@ -2,6 +2,7 @@
 #include "queues.hpp"
 #include "drive_enable.hpp"
 #include "home_selection.hpp"
+#include "enemy_base.hpp"
 #include "telemetry_bus.hpp"
 #include <mutexes.hpp>
 #include <wiring.h>
@@ -121,6 +122,21 @@ void DriveTrainTask::loop() {
 
     float left_rate = this->left_slew.update(left_out);
     float right_rate = this->right_slew.update(right_out);
+
+    // Final guard covers path following, timed pickups, and reverse overrides.
+    // Reset the ramp as well, so a stop is not delayed by slew limiting.
+    if (drive_enabled.load()) {
+        const auto pose = get_global_pose();
+        const float translation = (left_rate + right_rate) * 0.5f;
+        const float preview = translation > 0.0f ? 0.35f : translation < 0.0f ? -0.35f : 0.0f;
+        if (crosses_enemy_base(pose.position,
+                              pose.position + pose.get_direction_vector() * preview)) {
+            left_rate = right_rate = 0.0f;
+            left_command = right_command = 0.0f;
+            left_slew = SlewRate<float>(SLEW_RATE);
+            right_slew = SlewRate<float>(SLEW_RATE);
+        }
+    }
 
     left_motor.writeMicroseconds(map(left_rate, 1.0, -1.0, FORWARD_MS, REVERSE_MS));
     right_motor.writeMicroseconds(map(right_rate, 1.0, -1.0, REVERSE_MS, FORWARD_MS));
