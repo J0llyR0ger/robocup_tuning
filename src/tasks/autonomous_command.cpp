@@ -1,6 +1,7 @@
 #include "tasks/autonomous_command.hpp"
 #include "Arduino.h"
 #include "drive_enable.hpp"
+#include "home_selection.hpp"
 #include "telemetry_bus.hpp"
 #include <mutexes.hpp>
 #include <queues.hpp>
@@ -270,7 +271,10 @@ void AutonomousCommandTask::loop() {
     if (this->home_return_state == HomeReturnState::Searching &&
         (!storage_voltage_probe_high || full_by_count)) {
         // Both storage detection and a full count must run the complete drop sequence.
-        Serial.println("HOME: returning");
+        const auto target = active_home_position();
+        Serial.printf("HOME: returning to %s, target=(%.3f, %.3f), pose=(%.3f, %.3f)\n",
+                      active_home_blue.load() ? "blue" : "green",
+                      target.x(), target.y(), robot_pose.position.x(), robot_pose.position.y());
         this->weight_sensed_pose = std::nullopt;
         this->locked_weight_position = std::nullopt;
         this->approached_weight_position = std::nullopt;
@@ -281,9 +285,24 @@ void AutonomousCommandTask::loop() {
 
     if (this->home_return_state != HomeReturnState::Searching) {
         if (this->home_return_state == HomeReturnState::ReturningHome) {
-            set_motion_control_path({get_home_path(), 1.0});
-
-            const float home_distance = (robot_pose.position - get_home_position()).norm();
+            const Eigen::Vector2f target = active_home_position();
+            auto path = get_home_path();
+            const float home_distance = (robot_pose.position - target).norm();
+            // Allow grid-cell rounding, but never follow a route to the other base.
+            // Hold while mapping supplies a route for the latched team.
+            if ((path.empty() && home_distance > HOME_ARRIVAL_DISTANCE_M) ||
+                (!path.empty() && (path.back() - target).norm() > 0.20f)) {
+                set_motion_control_path({{}, 0.0f});
+                const auto hold = MotionControlOverride::HomeDropHold;
+                const bool rails_up = true;
+                xQueueOverwrite(motion_control_override_queue, &hold);
+                xQueueOverwrite(intake_position_queue, &rails_up);
+                return;
+            }
+            set_motion_control_path({path, 1.0});
+            const auto other_base = home_start_pose(!active_home_blue.load()).position;
+            const bool at_selected_base = home_distance <= HOME_ARRIVAL_DISTANCE_M &&
+                                         home_distance < (robot_pose.position - other_base).norm();
             const uint32_t home_now = millis();
             const bool near_home = home_distance <= HOME_STUCK_ARRIVAL_DISTANCE_M;
             if (home_distance > HOME_STUCK_EXIT_DISTANCE_M) {
@@ -301,9 +320,10 @@ void AutonomousCommandTask::loop() {
                 (recovery_reversing ||
                  home_now - this->home_progress_start_time >= HOME_STUCK_TIMEOUT_MS);
 
-            if (home_distance <= HOME_ARRIVAL_DISTANCE_M) {
-                Serial.printf("HOME: releasing, distance=%.2f m, stuck=%d\n",
-                              home_distance, stuck_near_home);
+            if (at_selected_base) {
+                Serial.printf("HOME: releasing at %s, target=(%.3f, %.3f), pose=(%.3f, %.3f), distance=%.2f m\n",
+                              active_home_blue.load() ? "blue" : "green", target.x(), target.y(),
+                              robot_pose.position.x(), robot_pose.position.y(), home_distance);
                 this->home_return_state = HomeReturnState::ReleasingWeights;
                 this->home_return_state_start_time = home_now;
                 this->home_best_distance = std::nullopt;
@@ -364,7 +384,7 @@ void AutonomousCommandTask::loop() {
                        }),
         this->missed_weights.end());
 
-    const Eigen::Vector2f home_position = get_home_position();
+    const Eigen::Vector2f home_position = active_home_position();
     // Bases are at opposite ends of the same short wall. X is the short axis;
     // mirroring the saved start works with either base assigned as our home.
     const Eigen::Vector2f enemy_position(FIELD_WIDTH_X_METERS - home_position.x(),

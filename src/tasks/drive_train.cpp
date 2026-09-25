@@ -1,6 +1,7 @@
 #include "tasks/drive_train.hpp"
 #include "queues.hpp"
 #include "drive_enable.hpp"
+#include "home_selection.hpp"
 #include "telemetry_bus.hpp"
 #include <mutexes.hpp>
 #include <wiring.h>
@@ -37,7 +38,7 @@ void DriveTrainTask::update_drive_button() {
     button_stable_pressed = pressed;
     if (pressed && button_armed) {
         button_armed = false;
-        const bool enabled = !drive_enabled.load();
+        const bool enabled = !drive_enabled.load() && !drive_start_pending.load();
         // Discard commands from before this transition.
         xQueueReset(motionControl_ChassisCommandsQueue);
         left_command = right_command = 0.0f;
@@ -45,8 +46,21 @@ void DriveTrainTask::update_drive_button() {
         right_slew = SlewRate<float>(SLEW_RATE);
         left_motor.writeMicroseconds(1500);
         right_motor.writeMicroseconds(1500);
-        drive_enabled.store(enabled);
-        Serial.println(enabled ? "DRIVE: enabled" : "DRIVE: inhibited");
+        drive_enabled.store(false);
+        if (enabled) {
+            const bool blue = selected_home_blue.load();
+            const bool new_base = home_request_generation.load() == 0 ||
+                                  blue != active_home_blue.load();
+            drive_start_pending.store(true);
+            if (new_base) {
+                active_home_blue.store(blue);
+                home_request_generation.fetch_add(1);
+            }
+            Serial.println(blue ? "HOME: blue latched" : "HOME: green latched");
+        } else {
+            drive_start_pending.store(false);
+            Serial.println("DRIVE: inhibited");
+        }
     }
 }
 
@@ -73,6 +87,15 @@ static float apply_kickoff(float command) {
 
 void DriveTrainTask::loop() {
     update_drive_button();
+    const uint32_t generation = home_request_generation.load();
+    if (drive_start_pending.load() && home_pose_generation.load() == generation &&
+        home_map_generation.load() == generation) {
+        xQueueReset(motionControl_ChassisCommandsQueue);
+        left_command = right_command = 0.0f;
+        drive_start_pending.store(false);
+        drive_enabled.store(true);
+        Serial.println("DRIVE: enabled; home ready");
+    }
     std::tuple<float, float> new_commands;
 
     if (xQueueReceive(motionControl_ChassisCommandsQueue, &new_commands, 0)) {

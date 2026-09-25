@@ -9,6 +9,8 @@
 
 class MappingTask : public SchedulerTask {
   private:
+    uint32_t home_generation = 0;
+    bool applied_home_blue = false;
     OccupancyGridMap occupancy_grid = OccupancyGridMap();
     OccupancyGridGraph occupancy_graph = OccupancyGridGraph(occupancy_grid);
     Eigen::Vector2f home_position = Eigen::Vector2f::Zero();

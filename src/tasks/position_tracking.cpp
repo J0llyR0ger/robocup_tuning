@@ -2,6 +2,7 @@
 #include "lib/odometry.hpp"
 #include "telemetry_bus.hpp"
 #include "utils.hpp"
+#include "home_selection.hpp"
 #include <mutexes.hpp>
 #include <queues.hpp>
 #undef B1
@@ -26,7 +27,32 @@ void PositionTrackingTask::setup() {
     set_global_pose(initial_pose);
 }
 
+void PositionTrackingTask::apply_home_selection() {
+    const uint32_t generation = home_request_generation.load();
+    if (generation == home_generation) return;
+    const bool blue = active_home_blue.load();
+    // Preserve the existing green startup localization. Only a base change resets it.
+    if (blue != applied_home_blue) {
+        const Pose pose = home_start_pose(blue);
+        mcl.set_initial_pose(pose, INITIAL_POSITION_NOISE, INITIAL_HEADING_NOISE);
+        last_mcl_position = pose.position;
+        accumulated_odometry_distance = 0.0f;
+        std::tuple<float, float> wheels;
+        if (xQueuePeek(driveTrain_positionTrackingWheelPositionQueue, &wheels, 0)) {
+            last_left_wheel_position = std::get<0>(wheels);
+            last_right_wheel_position = std::get<1>(wheels);
+        }
+        xQueuePeek(imu_positionTrackingHeadingQueue, &last_heading, 0);
+        set_robot_motion_mismatch(false);
+        set_global_pose(pose);
+        applied_home_blue = blue;
+    }
+    home_generation = generation;
+    home_pose_generation.store(generation);
+}
+
 void PositionTrackingTask::loop() {
+    apply_home_selection();
     // Odometry can be run at a faster rate than position resampling
     while (uxQueueMessagesWaiting(lidarReader_PositionTrackingScanQueue) == 0) {
         std::tuple<float, float> wheel_positions;
@@ -48,6 +74,8 @@ void PositionTrackingTask::loop() {
 
         xQueueReceive(imu_positionTrackingHeadingQueue, &current_heading, portMAX_DELAY);
 
+        // A selection can arrive while waiting for sensor queues.
+        if (home_request_generation.load() != home_generation) return;
         float heading_change = diff_angle(last_heading, current_heading);
 
         Eigen::Vector2f robot_travel =
@@ -67,6 +95,7 @@ void PositionTrackingTask::loop() {
     LidarScanPayload payload;
     xQueueReceive(lidarReader_PositionTrackingScanQueue, &payload, portMAX_DELAY);
 
+    if (home_request_generation.load() != home_generation) return;
     etl::vector<LidarResponsePoint, MAX_LIDAR_POINTS> points;
     points.assign(payload.points, payload.points + payload.count);
 

@@ -2,6 +2,7 @@
 #include "tasks/display.hpp"
 #include "config/display.hpp"
 #include "drive_enable.hpp"
+#include "home_selection.hpp"
 #include "mutexes.hpp"
 #include <Arduino.h>
 #include <Wire.h>
@@ -24,7 +25,6 @@ constexpr int JOYSTICK_DEAD_ZONE = 100;
 // A smaller return zone prevents noise at the edge from counting as a new move.
 constexpr int JOYSTICK_RETURN_ZONE = 60;
 unsigned selected_item = 0; // 0 = Home, 1 = M
-bool home_blue = false;
 bool menu_m = false;
 bool joystick_armed = false;
 unsigned centred_samples = 0;
@@ -35,10 +35,10 @@ void display_loop(void *) {
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(100));
         char lines[4][17] = {};
-        bool inhibited = !drive_enabled.load();
+        bool inhibited = !drive_enabled.load() && !drive_start_pending.load();
         if (inhibited) {
             const int x = analogRead(JOYSTICK_X_PIN) - JOYSTICK_CENTRE;
-            if (drive_enabled.load()) {
+            if (drive_enabled.load() || drive_start_pending.load()) {
                 joystick_armed = false;
                 centred_samples = 0;
                 continue;
@@ -48,7 +48,7 @@ void display_loop(void *) {
             const int abs_y = abs(y);
             // Only the short menu-state update is protected; ADC/I2C stay outside.
             taskENTER_CRITICAL();
-            if (drive_enabled.load()) {
+            if (drive_enabled.load() || drive_start_pending.load()) {
                 joystick_armed = false;
                 centred_samples = 0;
             } else if (abs_x <= JOYSTICK_RETURN_ZONE && abs_y <= JOYSTICK_RETURN_ZONE) {
@@ -63,7 +63,7 @@ void display_loop(void *) {
                     if (abs_y > abs_x) {
                         selected_item ^= 1;
                     } else if (selected_item == 0) {
-                        home_blue = !home_blue;
+                        selected_home_blue.store(!selected_home_blue.load());
                     } else {
                         menu_m = !menu_m;
                     }
@@ -72,7 +72,7 @@ void display_loop(void *) {
             taskEXIT_CRITICAL();
             snprintf(lines[0], sizeof(lines[0]), "SETUP");
             snprintf(lines[1], sizeof(lines[1]), "%c Home: %s",
-                     selected_item == 0 ? '>' : ' ', home_blue ? "blue" : "green");
+                     selected_item == 0 ? '>' : ' ', selected_home_blue.load() ? "blue" : "green");
             snprintf(lines[2], sizeof(lines[2]), "%c M: %s",
                      selected_item == 1 ? '>' : ' ', menu_m ? "Y" : "N");
             snprintf(lines[3], sizeof(lines[3]), "MOTORS INHIBITED");
@@ -83,7 +83,7 @@ void display_loop(void *) {
         }
 
         for (unsigned row = 0; row < 4; ++row) {
-            if (drive_enabled.load()) {
+            if (drive_enabled.load() || drive_start_pending.load()) {
                 // Blank all rows, including any drawn before the state changed.
                 if (inhibited) {
                     inhibited = false;

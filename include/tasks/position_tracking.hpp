@@ -10,6 +10,9 @@
 
 class PositionTrackingTask : public SchedulerTask {
   private:
+    uint32_t home_generation = 0;
+    bool applied_home_blue = false;
+    void apply_home_selection();
     float last_left_wheel_position;
     float last_right_wheel_position;
 

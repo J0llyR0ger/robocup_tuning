@@ -2,6 +2,7 @@
 #include "lib/a_star.hpp"
 #include "lib/path_smoother.hpp"
 #include "telemetry_bus.hpp"
+#include "home_selection.hpp"
 #include <Arduino.h>
 #include <mutexes.hpp>
 #include <queues.hpp>
@@ -10,7 +11,7 @@ MappingTask::MappingTask() : SchedulerTask("mapping") {}
 
 void MappingTask::setup() {
     this->occupancy_grid.clear();
-    this->home_position = get_global_pose().position;
+    this->home_position = home_start_pose(false).position;
     set_home_position(this->home_position);
 }
 
@@ -19,10 +20,29 @@ const float SIZE_DISTANCE_WEIGHTING = 0.5;
 void MappingTask::loop() {
     static uint32_t next_grid_publish_ms = 0;
 
-    Pose pose = get_global_pose();
-
     LidarScanPayload payload;
     xQueueReceive(lidarReader_MappingScanQueue, &payload, portMAX_DELAY);
+
+    const uint32_t generation = home_request_generation.load();
+    if (home_pose_generation.load() != generation) return;
+    if (home_generation != generation) {
+        const bool blue = active_home_blue.load();
+        if (blue != applied_home_blue) {
+            this->occupancy_grid.clear();
+            applied_home_blue = blue;
+        }
+        this->home_position = home_start_pose(blue).position;
+        set_home_position(this->home_position);
+        set_home_path({});
+        set_discovery_path({});
+        set_motion_control_path({{}, 0.0f});
+        home_generation = generation;
+    }
+    // Refresh from the latched team every cycle; cached startup coordinates
+    // must never select the other team's destination.
+    this->home_position = active_home_position();
+    set_home_position(this->home_position);
+    Pose pose = get_global_pose();
 
     etl::vector<LidarResponsePoint, MAX_LIDAR_POINTS> points;
     points.assign(payload.points, payload.points + payload.count);
@@ -79,6 +99,8 @@ void MappingTask::loop() {
         home_path.push_back(this->home_position);
     }
     set_home_path(home_path);
+    // DriveTrainTask waits for both localization and fresh paths before enabling.
+    home_map_generation.store(home_generation);
 
     telemetry::publish_occupancy_grid(this->occupancy_grid);
 }
