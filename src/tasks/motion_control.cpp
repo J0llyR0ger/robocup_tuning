@@ -7,12 +7,12 @@
 #define DRIVE_KP 25e-1 //alex 40e-1
 #define DRIVE_KI 0 // 20e-4
 
-#define TURN_KP 1.4//alex - 1
+#define TURN_KP 1.1//alex - 1
 #define TURN_KI 0
-#define TURN_KD 50e-2 //alex - 30e-2
+#define TURN_KD 35e-2 //alex - 30e-2
        
 //------- Joel edits -------
-static const uint32_t STUCK_TIME_MS = 120;
+static const uint32_t STUCK_TIME_MS = 150;
 static const uint32_t STUCK_RECOVERY_STARTUP_DELAY_MS = 3000;
 static const uint32_t REVERSE_TIME_MS = 1400;
 
@@ -42,7 +42,7 @@ static MotionControlOverride motion_override = MotionControlOverride::None;
 MotionControlTask::MotionControlTask()
     : SchedulerTask("motion_control"), pure_pursuit(0.6),
       pid_drive(PIDController(DRIVE_KP, DRIVE_KI, 0, 10)
-                    .with_output_limits(-0.5, 0.5)
+                    .with_output_limits(-0.75, 0.75)
                     .with_integral_bounds(-100, 100)),
       pid_turn(PIDController(TURN_KP, TURN_KI, TURN_KD, 3 * DEG_TO_RAD)
                    .with_output_limits(-2.0, 2.0)

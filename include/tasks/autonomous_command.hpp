@@ -27,6 +27,7 @@ class AutonomousCommandTask : public SchedulerTask {
     enum class PickupState { Idle, Reversing, Braking, Forward, Lifting };
     PickupState pickup_state = PickupState::Idle;
     uint32_t pickup_state_start_time = 0;
+    uint32_t pickup_forward_duration_ms = 0;
     bool early_intake_probe_was_active = false;
 
     std::optional<Pose> weight_sensed_pose = std::nullopt;

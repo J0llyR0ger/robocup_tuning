@@ -25,10 +25,12 @@ static const uint32_t PICKUP_BRAKE_MS = 400;
 static const uint32_t PICKUP_REVERSE_MS = 500;
 // One bounded forward interval at the faster pickup speed; entry does not restart it.
 static const uint32_t PICKUP_FORWARD_MS = 400;
+// Allow extra forward travel to reseat a weight after backing away from it.
+static const uint32_t PICKUP_REALIGN_FORWARD_MS = 800;
 // Finish the loaded lift before target selection can request rails down again.
 static const uint32_t PICKUP_LIFT_MS = 400;
 // Scale forward drive during the time-limited final pickup and drive-through.
-static const float PICKUP_DRIVE_MULTIPLIER = 1.5f;
+static const float PICKUP_DRIVE_MULTIPLIER = 0.75f;
 static const uint32_t WEIGHT_APPROACH_TIMEOUT_MS = 8000;
 static const uint32_t MISSED_WEIGHT_RETRY_DELAY_MS = 5000;
 static const float MISSED_WEIGHT_RADIUS_M = 0.3f;
@@ -109,6 +111,7 @@ void AutonomousCommandTask::loop() {
         this->home_return_state == HomeReturnState::Searching &&
         this->pickup_state == PickupState::Idle &&
         this->dummy_weight_rejection_state == DummyWeightRejectionState::Idle) {
+        this->pickup_forward_duration_ms = PICKUP_FORWARD_MS;
         this->pickup_state = PickupState::Forward;
         this->pickup_state_start_time = millis();
         this->intake_weight_position = this->locked_weight_position.has_value()
@@ -157,6 +160,7 @@ void AutonomousCommandTask::loop() {
         } else if (is_real && this->pickup_state == PickupState::Idle &&
                    this->dummy_weight_rejection_state == DummyWeightRejectionState::Idle &&
                    this->home_return_state == HomeReturnState::Searching) {
+            this->pickup_forward_duration_ms = PICKUP_REALIGN_FORWARD_MS;
             this->pickup_state = PickupState::Reversing;
             this->pickup_state_start_time = millis();
             Serial.println("PICKUP: realigning with rails down");
@@ -181,7 +185,8 @@ void AutonomousCommandTask::loop() {
             this->pickup_state = PickupState::Forward;
             this->pickup_state_start_time = now;
             Serial.println("PICKUP: forward with rails down");
-        } else if (this->pickup_state == PickupState::Forward && elapsed >= PICKUP_FORWARD_MS) {
+        } else if (this->pickup_state == PickupState::Forward &&
+                   elapsed >= this->pickup_forward_duration_ms) {
             this->pickup_state = PickupState::Lifting;
             this->pickup_state_start_time = now;
             Serial.println("PICKUP: lifting into storage");
@@ -488,7 +493,7 @@ void AutonomousCommandTask::loop() {
             this->approach_start_time = now;
         }
 
-        float speed = 1.0;
+        float speed = 0.5f/0.75f;
 
         if ((best_track - locking_center).norm() < 0.3) {
             speed = PICKUP_DRIVE_MULTIPLIER;
