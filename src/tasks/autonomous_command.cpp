@@ -18,7 +18,7 @@ static const uint32_t DUMMY_WEIGHT_RELEASE_TIMEOUT_MS = 3000;
 // Once a target enters the final pickup zone, do not let intermittent tracking
 // raise the rails before it reaches the intake switch.  This is only a failsafe
 // for a missed target; either intake entry clears it immediately.
-static const uint32_t PICKUP_ATTEMPT_TIMEOUT_MS = 2000;
+static const uint32_t PICKUP_ATTEMPT_TIMEOUT_MS = 5000;
 // Raise loaded rails even when friction prevents the normal 20 cm drive-through.
 static const uint32_t REAL_WEIGHT_RAIL_RAISE_TIMEOUT_MS = 750;
 // Keep rails at intake level through realignment, braking, and forward pickup.
@@ -72,6 +72,8 @@ void AutonomousCommandTask::loop() {
     if (!drive_enabled.load()) {
         dummy_rejection_priority.store(DummyRejectionPriority::Idle);
         dummy_release_confirmed.store(false);
+        const real_pickup::Command no_recovery;
+        xQueueOverwrite(real_pickup_recovery_queue, &no_recovery);
         // Cancel movement sequences without resetting mapping or carried weights.
         pickup_state = PickupState::Idle;
         dummy_weight_rejection_state = DummyWeightRejectionState::Idle;
@@ -109,8 +111,11 @@ void AutonomousCommandTask::loop() {
     uint8_t carried_count = 0;
     xQueuePeek(storage_voltage_probe_queue, &storage_clear, 0);
     xQueuePeek(carried_weight_count, &carried_count, 0);
+    real_pickup::Command real_recovery;
+    xQueuePeek(real_pickup_recovery_queue, &real_recovery, 0);
     // Home return takes priority, including a full load detected this same tick.
-    if (dummy_rejection_priority.load() == DummyRejectionPriority::Idle &&
+    if (real_recovery.state == real_pickup::State::Idle &&
+        dummy_rejection_priority.load() == DummyRejectionPriority::Idle &&
         early_entry && storage_clear && carried_count < 4 &&
         this->home_return_state == HomeReturnState::Searching &&
         this->pickup_state == PickupState::Idle &&
@@ -177,6 +182,39 @@ void AutonomousCommandTask::loop() {
             this->real_weight_detected_time = millis();
             this->locked_weight_position = std::nullopt;
         }
+    }
+
+    // This separate recovery applies only to pin 1 + pin 0 with rails UP at entry.
+    // Normal timed pickup below is unchanged. Dummy rejection always cancels it.
+    xQueuePeek(real_pickup_recovery_queue, &real_recovery, 0);
+    if (dummy_rejection_priority.load() != DummyRejectionPriority::Idle ||
+        this->home_return_state != HomeReturnState::Searching) {
+        real_recovery = {};
+        xQueueOverwrite(real_pickup_recovery_queue, &real_recovery);
+    }
+    if (real_recovery.state != real_pickup::State::Idle) {
+        this->pickup_state = PickupState::Idle;
+        this->pickup_attempt_rails_down = false;
+        const uint32_t now = millis();
+        const auto previous = real_recovery.state;
+        real_recovery.state = real_pickup::advance(previous, now - real_recovery.started, !storage_clear);
+        if (real_recovery.state != previous) real_recovery.started = now;
+        xQueueOverwrite(real_pickup_recovery_queue, &real_recovery);
+        const bool active = real_recovery.state != real_pickup::State::Idle;
+        xQueueOverwrite(intake_pickup_active_queue, &active);
+        auto command = MotionControlOverride::PickupHold;
+        if (real_recovery.state == real_pickup::State::Reversing) command = MotionControlOverride::PickupReverse;
+        if (real_recovery.state == real_pickup::State::Forward) command = MotionControlOverride::PickupForward;
+        const bool rails_up = real_pickup::rails_up(real_recovery.state, true);
+        xQueueOverwrite(motion_control_override_queue, &command);
+        xQueueOverwrite(intake_position_queue, &rails_up);
+        if (!active) {
+            this->weight_sensed_pose.reset();
+            this->locked_weight_position.reset();
+            this->approached_weight_position.reset();
+            set_motion_control_path({{}, 0.0});
+        }
+        return;
     }
 
     // Complete the pickup before normal target selection or a count-based home return.

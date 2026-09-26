@@ -6,6 +6,7 @@
 #include "lib/dummy_release.hpp"
 
 static DummyReleaseDetector dummy_release_detector;
+static bool real_entry_seen = false;
 #include <queues.hpp>
 
 IntakeTask::IntakeTask() : SchedulerTask("intake_task") {}
@@ -60,7 +61,11 @@ void IntakeTask::set_position(bool up) {
     // Guard every servo command, including direct sensor-triggered drops.
     bool force_rails_up = false;
     xQueuePeek(motion_control_force_rails_up_queue, &force_rails_up, 0);
-    up = rejection_rails_up(up || force_rails_up);
+    real_pickup::Command recovery;
+    xQueuePeek(real_pickup_recovery_queue, &recovery, 0);
+    up = up || force_rails_up;
+    if (recovery.state != real_pickup::State::Idle) up = real_pickup::rails_up(recovery.state, true);
+    up = rejection_rails_up(up);
 
     // Send each target once so repeated task ticks do not restart a timed move.
     if (rail_position_commanded && commanded_rails_up == up) {
@@ -156,7 +161,11 @@ void IntakeTask::monitor_servos() {
             bool up = commanded_rails_up;
             bool force_up = false;
             xQueuePeek(motion_control_force_rails_up_queue, &force_up, 0);
-            up = rejection_rails_up(up || force_up);
+            real_pickup::Command recovery;
+            xQueuePeek(real_pickup_recovery_queue, &recovery, 0);
+            up = up || force_up;
+            if (recovery.state != real_pickup::State::Idle) up = real_pickup::rails_up(recovery.state, true);
+            up = rejection_rails_up(up);
             if (servo_status_index == 0) {
                 servo.setPosition(angleToNum(up ? -5.0f : 45.0f), up ? 25 : 5,
                                   up ? HerkulexLed::Green : HerkulexLed::Blue);
@@ -352,8 +361,25 @@ void IntakeTask::loop() {
         dummy_release_confirmed.store(false);
     }
 
+    real_pickup::Command recovery;
+    xQueuePeek(real_pickup_recovery_queue, &recovery, 0);
+    // Capture the rail position at entry, before applying a queued DOWN command.
+    // Once handled, do not reinterpret the same weight when normal pickup lifts.
+    if (!drive_enabled.load() || (release_clear && !pickup_active)) real_entry_seen = false;
+    if (switch_state && conduction_state && !real_entry_seen) {
+        real_entry_seen = true;
+        if (recovery.state == real_pickup::State::Idle &&
+            real_pickup::should_start(switch_state, conduction_state, upside_down_state,
+                rail_position_commanded && commanded_rails_up, drive_enabled.load(),
+                dummy_rejection_priority.load() != DummyRejectionPriority::Idle ||
+                weight_intake_state == WeightIntakeState::DummyWeightDetected)) {
+            recovery = {real_pickup::State::Stopping, millis()};
+            xQueueOverwrite(real_pickup_recovery_queue, &recovery);
+        }
+    }
+
     // Resolve all rail commands after sensor classification, including recovery.
-    if (has_intake_command || force_rails_up ||
+    if (has_intake_command || force_rails_up || recovery.state != real_pickup::State::Idle ||
         dummy_rejection_priority.load() != DummyRejectionPriority::Idle) {
         set_position(intake_command);
     }

@@ -4,6 +4,7 @@
 #include "lib/weight_tracking.hpp"
 #include <FreeRTOS.h>
 #include <queue.h>
+#include "lib/real_pickup.hpp"
 
 // Position Sensors
 inline QueueHandle_t imu_positionTrackingHeadingQueue = xQueueCreate(1, sizeof(float));
@@ -67,6 +68,8 @@ inline QueueHandle_t carried_weight_count = xQueueCreate(1, sizeof(uint8_t));
 inline QueueHandle_t intake_reset_carried_weight_count_queue = xQueueCreate(1, sizeof(bool));
 
 inline QueueHandle_t intake_position_queue = xQueueCreate(1, sizeof(bool));
+// Intake starts the rails-up real-weight recovery; autonomous advances it.
+inline QueueHandle_t real_pickup_recovery_queue = xQueueCreate(1, sizeof(real_pickup::Command));
 
 // Hold the real-weight classification across the back-away and pickup sequence.
 inline QueueHandle_t intake_pickup_active_queue = xQueueCreate(1, sizeof(bool));
