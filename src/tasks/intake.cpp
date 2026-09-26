@@ -1,6 +1,11 @@
 #include "tasks/intake.hpp"
 #include "Arduino.h"
 #include <mutexes.hpp>
+#include "drive_enable.hpp"
+#include "dummy_rejection.hpp"
+#include "lib/dummy_release.hpp"
+
+static DummyReleaseDetector dummy_release_detector;
 #include <queues.hpp>
 
 IntakeTask::IntakeTask() : SchedulerTask("intake_task") {}
@@ -55,7 +60,7 @@ void IntakeTask::set_position(bool up) {
     // Guard every servo command, including direct sensor-triggered drops.
     bool force_rails_up = false;
     xQueuePeek(motion_control_force_rails_up_queue, &force_rails_up, 0);
-    up = up || force_rails_up;
+    up = rejection_rails_up(up || force_rails_up);
 
     // Send each target once so repeated task ticks do not restart a timed move.
     if (rail_position_commanded && commanded_rails_up == up) {
@@ -151,7 +156,7 @@ void IntakeTask::monitor_servos() {
             bool up = commanded_rails_up;
             bool force_up = false;
             xQueuePeek(motion_control_force_rails_up_queue, &force_up, 0);
-            up = up || force_up;
+            up = rejection_rails_up(up || force_up);
             if (servo_status_index == 0) {
                 servo.setPosition(angleToNum(up ? -5.0f : 45.0f), up ? 25 : 5,
                                   up ? HerkulexLed::Green : HerkulexLed::Blue);
@@ -214,8 +219,6 @@ uint16_t readPins() {
 }
 
 void IntakeTask::loop() {
-    monitor_servos();
-
     uint16_t pins = readPins();
     bool early_probe_active = (pins & (1 << EARLY_INTAKE_PROBE_PIN)) == 0;
     xQueueOverwrite(early_intake_probe_queue, &early_probe_active);
@@ -230,11 +233,6 @@ void IntakeTask::loop() {
     bool force_rails_up = false;
     xQueuePeek(motion_control_force_rails_up_queue, &force_rails_up, 0);
     const bool has_intake_command = xQueueReceive(intake_position_queue, &intake_command, 0);
-
-    // Raise on the next intake tick even without an autonomous command.
-    if (has_intake_command || force_rails_up) {
-        set_position(intake_command);
-    }
 
     bool conduction_state = (pins & (1 << ENTRY_CONDUCTION_PIN)) == 0;
     bool switch_state = (pins & (1 << ENTRY_SWITCH_PIN)) == 0;
@@ -271,6 +269,15 @@ void IntakeTask::loop() {
                 --total_weights;
             }
             weight_intake_state = WeightIntakeState::DummyWeightDetected;
+            if (drive_enabled.load()) {
+                auto expected = DummyRejectionPriority::Idle;
+                if (dummy_rejection_priority.load() == DummyRejectionPriority::Idle) {
+                    dummy_release_detector.reset();
+                    dummy_release_confirmed.store(false);
+                    dummy_moving_backwards.store(false);
+                }
+                dummy_rejection_priority.compare_exchange_strong(expected, DummyRejectionPriority::ReverseDown);
+            }
             set_position(false);
             bool val = false;
             xQueueSend(intake_entry_queue, &val, 0);
@@ -306,6 +313,15 @@ void IntakeTask::loop() {
             // autonomous queue consumer.  A command to raise the rails may
             // already be pending from the approach phase; the dummy must not
             // be allowed to ride that command into the intake.
+            if (drive_enabled.load()) {
+                auto expected = DummyRejectionPriority::Idle;
+                if (dummy_rejection_priority.load() == DummyRejectionPriority::Idle) {
+                    dummy_release_detector.reset();
+                    dummy_release_confirmed.store(false);
+                    dummy_moving_backwards.store(false);
+                }
+                dummy_rejection_priority.compare_exchange_strong(expected, DummyRejectionPriority::ReverseDown);
+            }
             set_position(false);
 
             bool val = false;
@@ -326,5 +342,21 @@ void IntakeTask::loop() {
         break;
     }
 
+    // Sample switch edges at intake frequency so autonomous cannot miss them.
+    if (drive_enabled.load() &&
+        dummy_rejection_priority.load() == DummyRejectionPriority::ReverseDown) {
+        dummy_release_confirmed.store(dummy_release_detector.update(
+            switch_state, dummy_moving_backwards.load()));
+    } else {
+        dummy_release_detector.reset();
+        dummy_release_confirmed.store(false);
+    }
+
+    // Resolve all rail commands after sensor classification, including recovery.
+    if (has_intake_command || force_rails_up ||
+        dummy_rejection_priority.load() != DummyRejectionPriority::Idle) {
+        set_position(intake_command);
+    }
+    monitor_servos();
     xQueueOverwrite(carried_weight_count, &this->total_weights);
 }

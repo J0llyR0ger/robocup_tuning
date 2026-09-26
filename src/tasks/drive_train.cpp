@@ -1,10 +1,11 @@
 #include "tasks/drive_train.hpp"
 #include "queues.hpp"
-#include "drive_enable.hpp"
 #include "home_selection.hpp"
 #include "enemy_base.hpp"
 #include "telemetry_bus.hpp"
 #include <mutexes.hpp>
+#include "drive_enable.hpp"
+#include "dummy_rejection.hpp"
 #include <wiring.h>
 
 DriveTrainTask::DriveTrainTask() : SchedulerTask("drive_train_task") {}
@@ -138,6 +139,17 @@ void DriveTrainTask::loop() {
         }
     }
 
+    // Final behavioural authority, including over slew and navigation boundaries.
+    // The physical drive-disable remains absolute.
+    const auto rejection = dummy_rejection_priority.load();
+    if (rejection != DummyRejectionPriority::Idle && drive_enabled.load()) {
+        left_command = right_command = rejection == DummyRejectionPriority::Lift ? 0.0f : -0.10f;
+        left_slew = SlewRate<float>(SLEW_RATE);
+        right_slew = SlewRate<float>(SLEW_RATE);
+        left_rate = right_rate = apply_kickoff(left_command);
+    }
+    if (!drive_enabled.load()) left_rate = right_rate = 0.0f;
+
     left_motor.writeMicroseconds(map(left_rate, 1.0, -1.0, FORWARD_MS, REVERSE_MS));
     right_motor.writeMicroseconds(map(right_rate, 1.0, -1.0, REVERSE_MS, FORWARD_MS));
 
@@ -152,6 +164,15 @@ void DriveTrainTask::loop() {
 
     int left_ticks = left_encoder.read();
     int right_ticks = -right_encoder.read();
+
+    // Require encoder travel backwards, not merely a reverse command while
+    // inertia is still carrying the robot forwards.
+    const int left_delta = left_ticks - last_left_ticks;
+    const int right_delta = right_ticks - last_right_ticks;
+    dummy_moving_backwards.store(drive_enabled.load() &&
+        dummy_rejection_priority.load() == DummyRejectionPriority::ReverseDown &&
+        left_command < 0.0f && right_command < 0.0f &&
+        left_delta <= 0 && right_delta <= 0 && (left_delta < 0 || right_delta < 0));
 
     float left_velocity = RADIANS_PER_TICK * (float)(left_ticks - last_left_ticks) / dt;
     float right_velocity = RADIANS_PER_TICK * (float)(right_ticks - last_right_ticks) / dt;

@@ -1,8 +1,9 @@
 #include "tasks/motion_control.hpp"
 #include "queues.hpp"
-#include "drive_enable.hpp"
 #include "telemetry_bus.hpp"
 #include <mutexes.hpp>
+#include "drive_enable.hpp"
+#include "dummy_rejection.hpp"
 
 #define DRIVE_KP 25e-1 //alex 40e-1
 #define DRIVE_KI 0 // 20e-4
@@ -75,6 +76,14 @@ void MotionControlTask::loop() {
     MotionControlOverride new_override;
     if (xQueueReceive(motion_control_override_queue, &new_override, 0)) {
         motion_override = new_override;
+    }
+
+    // Cover the interval before autonomous consumes the intake event.
+    switch (dummy_rejection_priority.load()) {
+    case DummyRejectionPriority::ReverseDown: motion_override = MotionControlOverride::DummyWeightReverse; break;
+    case DummyRejectionPriority::Lift: motion_override = MotionControlOverride::DummyWeightHold; break;
+    case DummyRejectionPriority::ReverseUp: motion_override = MotionControlOverride::DummyWeightClearanceReverse; break;
+    case DummyRejectionPriority::Idle: break;
     }
 
     auto path = get_motion_control_path();

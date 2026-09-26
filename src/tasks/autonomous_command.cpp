@@ -1,16 +1,17 @@
 #include "tasks/autonomous_command.hpp"
 #include "Arduino.h"
-#include "drive_enable.hpp"
 #include "home_selection.hpp"
 #include "enemy_base.hpp"
 #include "telemetry_bus.hpp"
 #include <mutexes.hpp>
+#include "drive_enable.hpp"
+#include "dummy_rejection.hpp"
 #include <queues.hpp>
 #include <algorithm>
 
 AutonomousCommandTask::AutonomousCommandTask() : SchedulerTask("autonomous_command") {}
 
-// Stop and retain the remaining weights as soon as the entry sensors release.
+// Stop and lift after the second entry-switch LOW during measured reverse motion.
 static const uint32_t DUMMY_WEIGHT_LIFT_MS = 400;
 static const uint32_t DUMMY_WEIGHT_CLEARANCE_MS = 1400;
 static const uint32_t DUMMY_WEIGHT_RELEASE_TIMEOUT_MS = 3000;
@@ -69,6 +70,8 @@ void AutonomousCommandTask::defer_missed_weight(const Eigen::Vector2f &position)
 
 void AutonomousCommandTask::loop() {
     if (!drive_enabled.load()) {
+        dummy_rejection_priority.store(DummyRejectionPriority::Idle);
+        dummy_release_confirmed.store(false);
         // Cancel movement sequences without resetting mapping or carried weights.
         pickup_state = PickupState::Idle;
         dummy_weight_rejection_state = DummyWeightRejectionState::Idle;
@@ -107,7 +110,8 @@ void AutonomousCommandTask::loop() {
     xQueuePeek(storage_voltage_probe_queue, &storage_clear, 0);
     xQueuePeek(carried_weight_count, &carried_count, 0);
     // Home return takes priority, including a full load detected this same tick.
-    if (early_entry && storage_clear && carried_count < 4 &&
+    if (dummy_rejection_priority.load() == DummyRejectionPriority::Idle &&
+        early_entry && storage_clear && carried_count < 4 &&
         this->home_return_state == HomeReturnState::Searching &&
         this->pickup_state == PickupState::Idle &&
         this->dummy_weight_rejection_state == DummyWeightRejectionState::Idle) {
@@ -126,10 +130,12 @@ void AutonomousCommandTask::loop() {
         Serial.println("PICKUP: early probe, forward with rails down");
     }
 
-    bool is_real;
-
-    // A non-conductive or upside-down entry starts dummy rejection.
-    if (xQueueReceive(intake_entry_queue, &is_real, 0)) {
+    bool is_real = false;
+    const bool rejection_pending = dummy_rejection_priority.load() != DummyRejectionPriority::Idle;
+    // A sensor rejection outranks older real-weight events, even if the queue filled.
+    if (rejection_pending) xQueueReset(intake_entry_queue);
+    if ((rejection_pending && dummy_weight_rejection_state == DummyWeightRejectionState::Idle) ||
+        (!rejection_pending && xQueueReceive(intake_entry_queue, &is_real, 0))) {
         // Preserve the object's coordinate if metal detection precedes rejection.
         // With no tracked target, use the estimated intake location.
         if (this->dummy_weight_rejection_state == DummyWeightRejectionState::Idle) {
@@ -153,6 +159,7 @@ void AutonomousCommandTask::loop() {
 
         if (!is_real && this->dummy_weight_rejection_state ==
                             DummyWeightRejectionState::Idle) {
+            dummy_rejection_priority.store(DummyRejectionPriority::ReverseDown);
             this->ignore_locked_weight();
             this->dummy_weight_rejection_state =
                 DummyWeightRejectionState::ReverseUntilRelease;
@@ -225,25 +232,29 @@ void AutonomousCommandTask::loop() {
     }
 
     if (this->dummy_weight_rejection_state != DummyWeightRejectionState::Idle) {
-        bool release_clear = false;
-        xQueuePeek(intake_release_clear_queue, &release_clear, 0);
+        const bool release_confirmed = dummy_release_confirmed.load();
         const uint32_t now = millis();
         if (this->dummy_weight_rejection_state == DummyWeightRejectionState::ReverseUntilRelease &&
-            (release_clear || now - this->dummy_weight_rejection_start_time >=
+            (release_confirmed || now - this->dummy_weight_rejection_start_time >=
                                   DUMMY_WEIGHT_RELEASE_TIMEOUT_MS)) {
+            dummy_rejection_priority.store(DummyRejectionPriority::Lift);
             this->dummy_weight_rejection_state = DummyWeightRejectionState::RaisingRails;
             this->dummy_weight_lift_start_time = now;
-            Serial.println(release_clear ? "DUMMY: released, lifting rails"
+            Serial.println(release_confirmed ? "DUMMY: reverse switch LOW, lifting rails"
                                          : "DUMMY: release timeout, stopping and lifting");
         }
         if (this->dummy_weight_rejection_state == DummyWeightRejectionState::RaisingRails &&
             now - this->dummy_weight_lift_start_time >= DUMMY_WEIGHT_LIFT_MS) {
+            dummy_rejection_priority.store(DummyRejectionPriority::ReverseUp);
             this->dummy_weight_rejection_state = DummyWeightRejectionState::ReverseForClearance;
             this->dummy_weight_clearance_start_time = now;
             Serial.println("DUMMY: reversing clear with rails up");
         }
         if (this->dummy_weight_rejection_state == DummyWeightRejectionState::ReverseForClearance &&
             now - this->dummy_weight_clearance_start_time >= DUMMY_WEIGHT_CLEARANCE_MS) {
+            xQueueReset(intake_entry_queue);
+            dummy_rejection_priority.store(DummyRejectionPriority::Idle);
+            dummy_release_confirmed.store(false);
             this->dummy_weight_rejection_state = DummyWeightRejectionState::Idle;
         } else {
             bool rails_up = this->dummy_weight_rejection_state != DummyWeightRejectionState::ReverseUntilRelease;
