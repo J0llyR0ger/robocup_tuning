@@ -63,7 +63,11 @@ void display_loop(void *) {
                     if (abs_y > abs_x) {
                         selected_item ^= 1;
                     } else if (selected_item == 0) {
-                        selected_home_blue.store(!selected_home_blue.load());
+                        const bool blue = !selected_home_blue.load();
+                        selected_home_blue.store(blue);
+                        active_home_blue.store(blue);
+                        // Publish after the colour so localization and mapping update in setup.
+                        home_request_generation.fetch_add(1);
                     } else {
                         menu_m = !menu_m;
                     }

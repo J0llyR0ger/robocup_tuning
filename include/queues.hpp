@@ -5,6 +5,7 @@
 #include <FreeRTOS.h>
 #include <queue.h>
 #include "lib/real_pickup.hpp"
+#include "lib/match_end.hpp"
 
 // Position Sensors
 inline QueueHandle_t imu_positionTrackingHeadingQueue = xQueueCreate(1, sizeof(float));
@@ -85,3 +86,6 @@ inline QueueHandle_t intake_entry_queue = xQueueCreate(10, sizeof(bool));
 
 // True when entry conduction and both intake limit switches are released.
 inline QueueHandle_t intake_release_clear_queue = xQueueCreate(1, sizeof(bool));
+
+// One coherent, timestamped sample for the end-of-match sequence.
+inline QueueHandle_t match_end_sensors_queue = xQueueCreate(1, sizeof(match_end::Sensors));

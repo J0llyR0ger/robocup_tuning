@@ -6,6 +6,7 @@
 #include <mutexes.hpp>
 #include "drive_enable.hpp"
 #include "dummy_rejection.hpp"
+#include "match_end.hpp"
 #include <wiring.h>
 
 DriveTrainTask::DriveTrainTask() : SchedulerTask("drive_train_task") {}
@@ -19,7 +20,6 @@ void DriveTrainTask::setup() {
     pinMode(BLUE_BUTTON_PIN, BLUE_BUTTON_ACTIVE_LOW ? INPUT_PULLUP : INPUT_PULLDOWN);
     button_raw_pressed = digitalRead(BLUE_BUTTON_PIN) ==
                          (BLUE_BUTTON_ACTIVE_LOW ? LOW : HIGH);
-    button_stable_pressed = button_raw_pressed;
     button_changed_at = millis();
     button_armed = false; // Require a stable release, including at boot.
     last_timestamp = micros();
@@ -35,12 +35,16 @@ void DriveTrainTask::update_drive_button() {
         button_changed_at = now;
     }
     if (now - button_changed_at < BLUE_BUTTON_DEBOUNCE_MS) return;
-    if (!pressed) button_armed = true;
-    if (pressed == button_stable_pressed) return;
-    button_stable_pressed = pressed;
-    if (pressed && button_armed) {
-        button_armed = false;
+    if (!pressed) {
+        button_armed = true;
+        return;
+    }
+    if (button_armed) {
         const bool enabled = !drive_enabled.load() && !drive_start_pending.load();
+        // Start on a normal press; stopping (or cancelling startup) needs a hold.
+        // Consume the press only when it acts, and require release before another action.
+        if (!enabled && now - button_changed_at < BLUE_BUTTON_OFF_HOLD_MS) return;
+        button_armed = false;
         // Discard commands from before this transition.
         xQueueReset(motionControl_ChassisCommandsQueue);
         left_command = right_command = 0.0f;
@@ -50,16 +54,18 @@ void DriveTrainTask::update_drive_button() {
         right_motor.writeMicroseconds(1500);
         drive_enabled.store(false);
         if (enabled) {
-            const bool blue = selected_home_blue.load();
-            const bool new_base = home_request_generation.load() == 0 ||
-                                  blue != active_home_blue.load();
+            match_end_rails_applied.store(match_end::Phase::Idle);
+            match_end_limit_seen.store(false);
+            match_controller.start(now);
+            match_end_phase.store(match_controller.phase);
+            // Home is already applied by the display. Wait for its pose/map update.
             drive_start_pending.store(true);
-            if (new_base) {
-                active_home_blue.store(blue);
-                home_request_generation.fetch_add(1);
-            }
-            Serial.println(blue ? "HOME: blue latched" : "HOME: green latched");
+            Serial.println(active_home_blue.load() ? "HOME: blue selected" : "HOME: green selected");
         } else {
+            match_controller.cancel();
+            match_end_phase.store(match_end::Phase::Idle);
+            const bool rails_up = true;
+            xQueueOverwrite(intake_position_queue, &rails_up);
             drive_start_pending.store(false);
             Serial.println("DRIVE: inhibited");
         }
@@ -89,6 +95,27 @@ static float apply_kickoff(float command) {
 
 void DriveTrainTask::loop() {
     update_drive_button();
+    match_end::Sensors end_sensors;
+    xQueuePeek(match_end_sensors_queue, &end_sensors, 0);
+    const auto old_phase = match_controller.phase;
+    const auto end_phase = match_controller.update(millis(), end_sensors,
+        match_end_limit_seen.load() || end_sensors.entry_switch || end_sensors.upside_down_switch,
+        match_end_rails_applied.load());
+    match_end_phase.store(end_phase);
+    if (end_phase != old_phase) {
+        Serial.printf("MATCH: end phase=%u\n", static_cast<unsigned>(end_phase));
+    }
+    if (end_phase == match_end::Phase::Finished) {
+        drive_enabled.store(false);
+        drive_start_pending.store(false);
+        left_command = right_command = 0.0f;
+        xQueueReset(motionControl_ChassisCommandsQueue);
+        if (old_phase != end_phase) {
+            // A button held across the deadline cannot immediately restart the robot.
+            button_armed = false;
+            Serial.println("DRIVE: inhibited; match complete");
+        }
+    }
     const uint32_t generation = home_request_generation.load();
     if (drive_start_pending.load() && home_pose_generation.load() == generation &&
         home_map_generation.load() == generation) {
@@ -160,6 +187,14 @@ void DriveTrainTask::loop() {
     const auto rejection = dummy_rejection_priority.load();
     if (rejection != DummyRejectionPriority::Idle && drive_enabled.load()) {
         left_command = right_command = rejection == DummyRejectionPriority::Lift ? 0.0f : -0.10f;
+        left_slew = SlewRate<float>(SLEW_RATE);
+        right_slew = SlewRate<float>(SLEW_RATE);
+        left_rate = right_rate = apply_kickoff(left_command);
+    }
+    // End-of-match motion overrides navigation and rejection; drive-disable is absolute.
+    if (match_end::owns_intake(end_phase)) {
+        left_command = right_command = end_phase == match_end::Phase::Reversing
+            ? -match_end::REVERSE_SPEED : 0.0f;
         left_slew = SlewRate<float>(SLEW_RATE);
         right_slew = SlewRate<float>(SLEW_RATE);
         left_rate = right_rate = apply_kickoff(left_command);

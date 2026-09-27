@@ -3,6 +3,7 @@
 #include "config.hpp"
 #include "lib/slew.hpp"
 #include "scheduler_task.hpp"
+#include "lib/match_end.hpp"
 
 #include <Encoder.h>
 #include <Servo.h>
@@ -12,10 +13,10 @@ const float SLEW_RATE = 4.0;
 class DriveTrainTask : public SchedulerTask {
   private:
     bool button_raw_pressed = false;
-    bool button_stable_pressed = false;
     bool button_armed = false;
     uint32_t button_changed_at = 0;
     void update_drive_button();
+    match_end::Controller match_controller;
 
     Servo left_motor;
     Servo right_motor;

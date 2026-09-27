@@ -3,6 +3,7 @@
 #include "telemetry_bus.hpp"
 #include <mutexes.hpp>
 #include "drive_enable.hpp"
+#include "match_end.hpp"
 #include "dummy_rejection.hpp"
 #include "enemy_base.hpp"
 #include "utils.hpp"
@@ -15,7 +16,7 @@
 #define TURN_KD 35e-2 //alex - 30e-2
        
 //------- Joel edits -------
-static const uint32_t STUCK_TIME_MS = 150;
+static const uint32_t STUCK_TIME_MS = 170;
 static const uint32_t STUCK_RECOVERY_STARTUP_DELAY_MS = 3000;
 static const uint32_t REVERSE_TIME_MS = 1400;
 
@@ -65,7 +66,7 @@ void MotionControlTask::setup() {
 }
 
 void MotionControlTask::loop() {
-    if (!drive_enabled.load()) {
+    if (!drive_enabled.load() || match_end::owns_intake(match_end_phase.load())) {
         pid_drive.reset();
         pid_turn.reset();
         motion_control_start_time = millis();

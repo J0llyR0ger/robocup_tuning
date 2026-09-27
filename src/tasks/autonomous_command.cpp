@@ -5,6 +5,7 @@
 #include "telemetry_bus.hpp"
 #include <mutexes.hpp>
 #include "drive_enable.hpp"
+#include "match_end.hpp"
 #include "dummy_rejection.hpp"
 #include <queues.hpp>
 #include <algorithm>
@@ -43,7 +44,7 @@ static const float HOME_ARRIVAL_DISTANCE_M = 0.4f;
 static const float HOME_STUCK_ARRIVAL_DISTANCE_M = 0.7f;
 static const float HOME_PROGRESS_DISTANCE_M = 0.05f;
 // Retain near-home progress history through modest localization jitter.
-static const float HOME_STUCK_EXIT_DISTANCE_M = 1.0f;
+static const float HOME_STUCK_EXIT_DISTANCE_M = 0.8f;
 static const uint32_t HOME_STUCK_TIMEOUT_MS = 1500;
 static const uint32_t HOME_DROP_RELEASE_TIME_MS = 1500;
 static const uint32_t HOME_DROP_REVERSE_TIME_MS = 2000;
@@ -69,7 +70,7 @@ void AutonomousCommandTask::defer_missed_weight(const Eigen::Vector2f &position)
 }
 
 void AutonomousCommandTask::loop() {
-    if (!drive_enabled.load()) {
+    if (!drive_enabled.load() || match_end::owns_intake(match_end_phase.load())) {
         dummy_rejection_priority.store(DummyRejectionPriority::Idle);
         dummy_release_confirmed.store(false);
         const real_pickup::Command no_recovery;

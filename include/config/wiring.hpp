@@ -6,6 +6,7 @@
 static const int BLUE_BUTTON_PIN = A6;
 static const bool BLUE_BUTTON_ACTIVE_LOW = true;
 static const uint32_t BLUE_BUTTON_DEBOUNCE_MS = 40;
+static const uint32_t BLUE_BUTTON_OFF_HOLD_MS = 1000;
 
 // Motor Control
 static const int LEFT_MOTOR_CONTROL_PIN = 1;
@@ -25,3 +26,6 @@ static const int STORAGE_VOLTAGE_PROBE_PIN = 3;
 
 // Additional early intake probe on the SX1509; LOW means weight detected.
 static const int EARLY_INTAKE_PROBE_PIN = 4;
+
+// Storage slot 1 probe on the SX1509; LOW means occupied.
+static const int STORAGE_SLOT1_VOLTAGE_PROBE_PIN = 6;

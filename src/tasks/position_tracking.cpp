@@ -111,7 +111,7 @@ void PositionTrackingTask::loop() {
 
     bool motion_mismatch =
         odometry_distance < 0.0090f &&
-        mcl_distance > 0.007f;
+        mcl_distance > 0.018f;
 
     Serial.print("ODO: ");
     Serial.print(odometry_distance * 1000.0f);

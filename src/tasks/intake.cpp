@@ -2,6 +2,7 @@
 #include "Arduino.h"
 #include <mutexes.hpp>
 #include "drive_enable.hpp"
+#include "match_end.hpp"
 #include "dummy_rejection.hpp"
 #include "lib/dummy_release.hpp"
 
@@ -39,6 +40,9 @@ void IntakeTask::setup() {
     expander.pinMode(ENTRY_SWITCH_PIN, INPUT);
     expander.pinMode(UPSIDE_DOWN_WEIGHT_SWITCH_PIN, INPUT);
     expander.pinMode(STORAGE_VOLTAGE_PROBE_PIN, INPUT);
+    expander.pinMode(STORAGE_SLOT1_VOLTAGE_PROBE_PIN, INPUT);
+    expander.debouncePin(STORAGE_VOLTAGE_PROBE_PIN);
+    expander.debouncePin(STORAGE_SLOT1_VOLTAGE_PROBE_PIN);
     expander.pinMode(EARLY_INTAKE_PROBE_PIN, INPUT);
     expander.debouncePin(EARLY_INTAKE_PROBE_PIN);
 
@@ -66,6 +70,7 @@ void IntakeTask::set_position(bool up) {
     up = up || force_rails_up;
     if (recovery.state != real_pickup::State::Idle) up = real_pickup::rails_up(recovery.state, true);
     up = rejection_rails_up(up);
+    if (match_end::owns_intake(match_end_phase.load())) up = match_end::rails_up(match_end_phase.load());
 
     // Send each target once so repeated task ticks do not restart a timed move.
     if (rail_position_commanded && commanded_rails_up == up) {
@@ -166,6 +171,7 @@ void IntakeTask::monitor_servos() {
             up = up || force_up;
             if (recovery.state != real_pickup::State::Idle) up = real_pickup::rails_up(recovery.state, true);
             up = rejection_rails_up(up);
+            if (match_end::owns_intake(match_end_phase.load())) up = match_end::rails_up(match_end_phase.load());
             if (servo_status_index == 0) {
                 servo.setPosition(angleToNum(up ? -5.0f : 45.0f), up ? 25 : 5,
                                   up ? HerkulexLed::Green : HerkulexLed::Blue);
@@ -207,15 +213,24 @@ const int PIN_INPUT_STATE_ADDRESS = 0x10;
 
 const int CONDUCTION_DEBOUNCER_TIME = 100;
 
-uint16_t readPins() {
+uint16_t readPins(bool &valid) {
+    valid = false;
     // Manually read the pins instead of using the expander library, as the library uses redundant
     // multiple tranmissions when reading more than 1 pin
 
     if (xSemaphoreTake(i2cMutex, portMAX_DELAY)) {
         Wire.beginTransmission(IO_EXPANDER_ADDRESS);
         Wire.write(PIN_INPUT_STATE_ADDRESS);
-        Wire.endTransmission();
+        if (Wire.endTransmission() != 0) {
+            xSemaphoreGive(i2cMutex);
+            return 0xffff;
+        }
         Wire.requestFrom(IO_EXPANDER_ADDRESS, (uint8_t)2);
+        if (Wire.available() < 2) {
+            xSemaphoreGive(i2cMutex);
+            return 0xffff;
+        }
+        valid = true;
 
         uint16_t msb = (Wire.read() & 0x00FF) << 8;
         uint16_t lsb = (Wire.read() & 0x00FF);
@@ -225,10 +240,12 @@ uint16_t readPins() {
 
         return msb | lsb;
     }
+    return 0xffff;
 }
 
 void IntakeTask::loop() {
-    uint16_t pins = readPins();
+    bool pins_valid = false;
+    uint16_t pins = readPins(pins_valid);
     bool early_probe_active = (pins & (1 << EARLY_INTAKE_PROBE_PIN)) == 0;
     xQueueOverwrite(early_intake_probe_queue, &early_probe_active);
 
@@ -251,6 +268,29 @@ void IntakeTask::loop() {
     bool storage_voltage_probe_high = (pins & (1 << STORAGE_VOLTAGE_PROBE_PIN)) != 0;
     xQueueOverwrite(storage_voltage_probe_queue, &storage_voltage_probe_high);
     uint32_t now = millis();
+    const match_end::Sensors end_sensors{pins_valid,
+        (pins & (1 << STORAGE_SLOT1_VOLTAGE_PROBE_PIN)) == 0,
+        !storage_voltage_probe_high, switch_state, upside_down_state, now};
+    xQueueOverwrite(match_end_sensors_queue, &end_sensors);
+    const auto end_phase = match_end_phase.load();
+    if (match_end::owns_intake(end_phase)) {
+        if (pins_valid && (switch_state || upside_down_state) &&
+            (end_phase == match_end::Phase::Lowering || end_phase == match_end::Phase::Reversing)) {
+            match_end_limit_seen.store(true);
+        }
+        // These switches now detect the stored weight; do not classify it as a new pickup/dummy.
+        dummy_rejection_priority.store(DummyRejectionPriority::Idle);
+        dummy_release_detector.reset();
+        dummy_release_confirmed.store(false);
+        const real_pickup::Command idle;
+        xQueueOverwrite(real_pickup_recovery_queue, &idle);
+        xQueueReset(intake_entry_queue);
+        set_position(match_end::rails_up(end_phase));
+        match_end_rails_applied.store(end_phase);
+        monitor_servos();
+        xQueueOverwrite(carried_weight_count, &this->total_weights);
+        return;
+    }
 
     if (!storage_voltage_probe_initialized ||
         storage_voltage_probe_high != storage_voltage_probe_last_high ||
