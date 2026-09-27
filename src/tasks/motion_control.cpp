@@ -11,14 +11,22 @@
 #define DRIVE_KP 25e-1 //alex 40e-1
 #define DRIVE_KI 0 // 20e-4
 
-#define TURN_KP 1.1//alex - 1
+#define TURN_KP 1.15//alex - 1
 #define TURN_KI 0
-#define TURN_KD 35e-2 //alex - 30e-2
+#define TURN_KD 45e-2 //alex - 30e-2
        
 //------- Joel edits -------
-static const uint32_t STUCK_TIME_MS = 170;
+static const uint32_t STUCK_TIME_MS = 160;
+static const uint32_t TURN_STUCK_TIME_MS = 300;
+static const float TURN_STUCK_MIN_COMMAND = 0.15f;
+static const float TURN_STUCK_MIN_ERROR = 10.0f * DEG_TO_RAD;
+static const float TURN_STUCK_MIN_PROGRESS = 3.0f * DEG_TO_RAD;
+static bool turn_stuck_timer_running = false;
+static uint32_t turn_progress_start_time = 0;
+static float turn_progress_heading = 0.0f;
+static bool turn_progress_positive = false;
 static const uint32_t STUCK_RECOVERY_STARTUP_DELAY_MS = 3000;
-static const uint32_t REVERSE_TIME_MS = 1400;
+static const uint32_t REVERSE_TIME_MS = 1600;
 
 static const float REVERSE_COMMAND = 0.20;
 static const float DUMMY_WEIGHT_REVERSE_SPEED = 0.10f;
@@ -62,6 +70,7 @@ void MotionControlTask::setup() {
     motion_control_start_time = millis();
     stuck_recovery_enabled = false;
     stuck_timer_running = false;
+    turn_stuck_timer_running = false;
     reversing = false;
 }
 
@@ -70,6 +79,7 @@ void MotionControlTask::loop() {
         pid_drive.reset();
         pid_turn.reset();
         motion_control_start_time = millis();
+        turn_stuck_timer_running = false;
         stuck_recovery_enabled = false;
         stuck_timer_running = false;
         reversing = false;
@@ -112,6 +122,7 @@ void MotionControlTask::loop() {
     }
     // Finish deliberate intake/drop sequences before taking control of motion.
     if (enemy_escape_active && motion_override == MotionControlOverride::None) {
+        turn_stuck_timer_running = false;
         reversing = false;
         stuck_timer_running = false;
         pid_drive.reset();
@@ -176,6 +187,33 @@ void MotionControlTask::loop() {
             }
         } else {
             stuck_timer_running = false;
+        }
+    }
+
+    // Require sustained steering with no heading progress. Use raw IMU heading
+    // so MCL position/heading corrections cannot reset the progress window.
+    float imu_heading;
+    const bool trying_to_turn = motion_override == MotionControlOverride::None &&
+        stuck_recovery_enabled && !reversing &&
+        std::fabs(turn_output) >= TURN_STUCK_MIN_COMMAND &&
+        std::fabs(turn_error) >= TURN_STUCK_MIN_ERROR;
+    if (!trying_to_turn ||
+        !xQueuePeek(imu_motionControlHeadingQueue, &imu_heading, 0)) {
+        turn_stuck_timer_running = false;
+    } else {
+        const bool positive = turn_output > 0.0f;
+        if (!turn_stuck_timer_running || positive != turn_progress_positive ||
+            std::fabs(diff_angle(turn_progress_heading, imu_heading)) >=
+                TURN_STUCK_MIN_PROGRESS) {
+            turn_stuck_timer_running = true;
+            turn_progress_start_time = now;
+            turn_progress_heading = imu_heading;
+            turn_progress_positive = positive;
+        } else if (now - turn_progress_start_time >= TURN_STUCK_TIME_MS) {
+            reversing = true;
+            reverse_start_time = now;
+            stuck_timer_running = false;
+            turn_stuck_timer_running = false;
         }
     }
 

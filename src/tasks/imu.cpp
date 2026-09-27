@@ -18,6 +18,9 @@ void ImuTask::loop() {
     if (xSemaphoreTake(i2cMutex, portMAX_DELAY)) {
         this->last_euler_angles = this->imu.getVector(Adafruit_BNO055::VECTOR_EULER);
 
+        const float heading = this->get_euler_angles().y();
+        xQueueOverwrite(imu_motionControlHeadingQueue, &heading);
+
         // Send IMU heading data to position tracking task
         xQueueSendToFront(imu_positionTrackingHeadingQueue, &this->get_euler_angles().y(), 0);
 

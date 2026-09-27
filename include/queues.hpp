@@ -9,6 +9,8 @@
 
 // Position Sensors
 inline QueueHandle_t imu_positionTrackingHeadingQueue = xQueueCreate(1, sizeof(float));
+// Latest IMU heading for turn-stuck detection; motion control only peeks.
+inline QueueHandle_t imu_motionControlHeadingQueue = xQueueCreate(1, sizeof(float));
 inline QueueHandle_t driveTrain_positionTrackingWheelPositionQueue =
     xQueueCreate(1, sizeof(std::tuple<float, float>));
 

@@ -46,8 +46,8 @@ static const float HOME_PROGRESS_DISTANCE_M = 0.05f;
 // Retain near-home progress history through modest localization jitter.
 static const float HOME_STUCK_EXIT_DISTANCE_M = 0.8f;
 static const uint32_t HOME_STUCK_TIMEOUT_MS = 1500;
-static const uint32_t HOME_DROP_RELEASE_TIME_MS = 1500;
-static const uint32_t HOME_DROP_REVERSE_TIME_MS = 2000;
+static const uint32_t HOME_DROP_RELEASE_TIME_MS = 1700;
+static const uint32_t HOME_DROP_REVERSE_TIME_MS = 2500;
 
 void AutonomousCommandTask::setup() {}
 
