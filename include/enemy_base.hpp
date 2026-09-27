@@ -34,3 +34,21 @@ inline bool crosses_enemy_base(const Eigen::Vector2f &a, const Eigen::Vector2f &
 inline bool inside_enemy_base(const Eigen::Vector2f &point) {
     return crosses_enemy_base(point, point);
 }
+
+// Signed clearance through either field-facing edge (negative while inside).
+inline float enemy_base_exit_clearance(const Eigen::Vector2f &point) {
+    const float size = ENEMY_BASE_SIZE_M + ENEMY_BASE_CLEARANCE_M;
+    const float x_clearance = active_home_blue.load() ? point.x() - size
+        : FIELD_WIDTH_X_METERS - size - point.x();
+    return std::max(x_clearance, point.y() - size);
+}
+
+inline Eigen::Vector2f enemy_base_escape_direction(const Eigen::Vector2f &point) {
+    const float size = ENEMY_BASE_SIZE_M + ENEMY_BASE_CLEARANCE_M;
+    const bool blue = active_home_blue.load();
+    const float x_distance = blue ? size - point.x()
+        : point.x() - (FIELD_WIDTH_X_METERS - size);
+    return x_distance <= size - point.y()
+        ? Eigen::Vector2f(blue ? 1.0f : -1.0f, 0.0f)
+        : Eigen::Vector2f(0.0f, 1.0f);
+}

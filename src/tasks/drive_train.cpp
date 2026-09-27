@@ -130,8 +130,24 @@ void DriveTrainTask::loop() {
         const auto pose = get_global_pose();
         const float translation = (left_rate + right_rate) * 0.5f;
         const float preview = translation > 0.0f ? 0.35f : translation < 0.0f ? -0.35f : 0.0f;
-        if (crosses_enemy_base(pose.position,
-                              pose.position + pose.get_direction_vector() * preview)) {
+        // Heading is clockwise from +Y, in radians (same convention as steering).
+        const Eigen::Vector2f direction(std::sin(pose.heading), std::cos(pose.heading));
+        bool blocked = crosses_enemy_base(pose.position,
+                              pose.position + direction * preview);
+        if (inside_enemy_base(pose.position)) {
+            if (left_rate * right_rate <= 0.0f) {
+                // Cancel translation from unequal wheel scaling while turning to escape.
+                const float turn = (left_rate - right_rate) * 0.5f;
+                left_rate = turn;
+                right_rate = -turn;
+                blocked = false;
+            } else {
+                const auto projected = pose.position + direction * preview;
+                blocked = enemy_base_exit_clearance(projected) <=
+                          enemy_base_exit_clearance(pose.position);
+            }
+        }
+        if (blocked) {
             left_rate = right_rate = 0.0f;
             left_command = right_command = 0.0f;
             left_slew = SlewRate<float>(SLEW_RATE);

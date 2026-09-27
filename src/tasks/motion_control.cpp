@@ -4,6 +4,8 @@
 #include <mutexes.hpp>
 #include "drive_enable.hpp"
 #include "dummy_rejection.hpp"
+#include "enemy_base.hpp"
+#include "utils.hpp"
 
 #define DRIVE_KP 25e-1 //alex 40e-1
 #define DRIVE_KI 0 // 20e-4
@@ -35,6 +37,12 @@ static bool reversing = false;
 static uint32_t stuck_start_time = 0;
 static uint32_t reverse_start_time = 0;
 
+static const float ENEMY_ESCAPE_SPEED = 0.15f;
+static const float ENEMY_ESCAPE_TURN_SPEED = 0.15f;
+static const float ENEMY_ESCAPE_CLEARANCE_M = 0.10f;
+static bool enemy_escape_active = false;
+static Eigen::Vector2f enemy_escape_direction;
+
 static MotionControlOverride motion_override = MotionControlOverride::None;
 
 
@@ -64,6 +72,7 @@ void MotionControlTask::loop() {
         stuck_recovery_enabled = false;
         stuck_timer_running = false;
         reversing = false;
+        enemy_escape_active = false;
         motion_override = MotionControlOverride::None;
         xQueueReset(motion_control_override_queue);
         const bool inactive = false;
@@ -90,6 +99,36 @@ void MotionControlTask::loop() {
     this->pure_pursuit.set_current_path(path.path);
 
     auto pose = get_global_pose();
+
+    // Escape independently of A*: it deliberately rejects starts in the enemy base.
+    if (!enemy_escape_active && inside_enemy_base(pose.position)) {
+        enemy_escape_active = true;
+        enemy_escape_direction = enemy_base_escape_direction(pose.position);
+    }
+    if (enemy_escape_active &&
+        enemy_base_exit_clearance(pose.position) >= ENEMY_ESCAPE_CLEARANCE_M) {
+        enemy_escape_active = false;
+    }
+    // Finish deliberate intake/drop sequences before taking control of motion.
+    if (enemy_escape_active && motion_override == MotionControlOverride::None) {
+        reversing = false;
+        stuck_timer_running = false;
+        pid_drive.reset();
+        pid_turn.reset();
+        const float error = diff_angle(pose.heading,
+            std::atan2(enemy_escape_direction.x(), enemy_escape_direction.y()));
+        const bool aligned = std::fabs(error) < 0.15f;
+        const float turn = aligned ? 0.0f
+            : (error > 0.0f ? ENEMY_ESCAPE_TURN_SPEED : -ENEMY_ESCAPE_TURN_SPEED);
+        const float drive = aligned ? ENEMY_ESCAPE_SPEED : 0.0f;
+        const auto commands = std::make_tuple(drive + turn, drive - turn);
+        const bool active = true;
+        // Suspend target selection and keep the rails raised during escape.
+        xQueueOverwrite(motion_control_recovery_reversing_queue, &active);
+        xQueueOverwrite(motion_control_force_rails_up_queue, &active);
+        xQueueOverwrite(motionControl_ChassisCommandsQueue, &commands);
+        return;
+    }
 
     auto [drive_error, turn_error] = pure_pursuit.compute_errors(pose);
 
