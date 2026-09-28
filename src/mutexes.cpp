@@ -1,6 +1,7 @@
 #include "mutexes.hpp"
 
 void setupMutexes() {
+    openingPathMutex = xSemaphoreCreateMutex();
     i2cMutex = xSemaphoreCreateMutex();
     globalPoseMutex = xSemaphoreCreateMutex();
     motionControlPathMutex = xSemaphoreCreateMutex();
@@ -113,3 +114,15 @@ void set_robot_motion_mismatch(bool mismatch) {
     xSemaphoreGive(robotMotionMismatchMutex);
 }
 //---------------------------------
+
+std::vector<Eigen::Vector2f> get_opening_path() {
+    xSemaphoreTake(openingPathMutex, portMAX_DELAY);
+    auto path = openingPath;
+    xSemaphoreGive(openingPathMutex);
+    return path;
+}
+void set_opening_path(std::vector<Eigen::Vector2f> path) {
+    xSemaphoreTake(openingPathMutex, portMAX_DELAY);
+    openingPath = path;
+    xSemaphoreGive(openingPathMutex);
+}

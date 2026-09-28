@@ -29,3 +29,8 @@ static const int EARLY_INTAKE_PROBE_PIN = 4;
 
 // Storage slot 1 probe on the SX1509; LOW means occupied.
 static const int STORAGE_SLOT1_VOLTAGE_PROBE_PIN = 6;
+
+// Auxiliary three-wire servo signal on A10Z (Teensy A10 / pin 24).
+static const int AUX_SERVO_PIN = A10;
+static const int AUX_SERVO_START_DEGREES = 90;
+static const int AUX_SERVO_M_DEGREES = 0;

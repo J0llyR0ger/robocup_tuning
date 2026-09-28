@@ -21,30 +21,25 @@ struct Sensors {
 };
 class Controller {
     uint32_t started = 0, phase_started = 0;
-    bool checked = false, rail_timer_running = false;
+    bool rail_timer_running = false;
 public:
     Phase phase = Phase::Idle;
     constexpr void start(uint32_t now) {
-        started = phase_started = now; checked = false; rail_timer_running = false; phase = Phase::Running;
+        started = phase_started = now; rail_timer_running = false; phase = Phase::Running;
     }
     constexpr void cancel() { phase = Phase::Idle; }
-    constexpr Phase update(uint32_t now, const Sensors &s, bool intake_detected, Phase rails_applied) {
+    constexpr Phase update(uint32_t now, const Sensors &, bool, Phase rails_applied) {
         if (phase == Phase::Idle || phase == Phase::Finished) return phase;
         if (uint32_t(now - started) >= STOP_AT_MS) return phase = Phase::Finished;
-        const bool fresh = s.valid && uint32_t(now - s.sampled_at) <= SENSOR_MAX_AGE_MS;
-        if (phase == Phase::Running && !checked && uint32_t(now - started) >= PREPARE_AT_MS) {
-            checked = true;
-            if (fresh && s.slot1_occupied && s.slot4_occupied) {
-                phase = Phase::Lowering; phase_started = now;
-            }
+        // Always stop and cycle the rails at 110 seconds, regardless of sensors.
+        if (phase == Phase::Running && uint32_t(now - started) >= PREPARE_AT_MS) {
+            phase = Phase::Lowering; phase_started = now;
         } else if ((phase == Phase::Lowering || phase == Phase::Lifting) && !rail_timer_running) {
             if (rails_applied == phase) { phase_started = now; rail_timer_running = true; }
         } else if (phase == Phase::Lowering && rail_timer_running &&
                    uint32_t(now - phase_started) >= LOWER_TIME_MS) {
-            phase = fresh && !intake_detected ? Phase::Reversing : Phase::Lifting;
+            phase = Phase::Lifting;
             phase_started = now; rail_timer_running = false;
-        } else if (phase == Phase::Reversing && (!fresh || intake_detected)) {
-            phase = Phase::Lifting; phase_started = now; rail_timer_running = false;
         } else if (phase == Phase::Lifting && rails_applied == Phase::Lifting &&
                    uint32_t(now - phase_started) >= LIFT_TIME_MS) {
             phase = Phase::Finished;

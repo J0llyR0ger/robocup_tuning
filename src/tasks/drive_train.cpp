@@ -4,9 +4,11 @@
 #include "enemy_base.hpp"
 #include "telemetry_bus.hpp"
 #include <mutexes.hpp>
+#include "m_opening.hpp"
 #include "drive_enable.hpp"
 #include "dummy_rejection.hpp"
 #include "match_end.hpp"
+#include "tasks/display.hpp"
 #include <wiring.h>
 
 DriveTrainTask::DriveTrainTask() : SchedulerTask("drive_train_task") {}
@@ -54,6 +56,10 @@ void DriveTrainTask::update_drive_button() {
         right_motor.writeMicroseconds(1500);
         drive_enabled.store(false);
         if (enabled) {
+            m_opening_stopped.store(false);
+            m_opening_servo_raised.store(false);
+            m_opening_phase.store(menu_m_enabled.load() ? m_opening::Phase::Approaching : m_opening::Phase::Idle);
+            set_opening_path({});
             match_end_rails_applied.store(match_end::Phase::Idle);
             match_end_limit_seen.store(false);
             match_controller.start(now);
@@ -62,6 +68,7 @@ void DriveTrainTask::update_drive_button() {
             drive_start_pending.store(true);
             Serial.println(active_home_blue.load() ? "HOME: blue selected" : "HOME: green selected");
         } else {
+            m_opening_phase.store(m_opening::Phase::Idle);
             match_controller.cancel();
             match_end_phase.store(match_end::Phase::Idle);
             const bool rails_up = true;
@@ -191,6 +198,12 @@ void DriveTrainTask::loop() {
         right_slew = SlewRate<float>(SLEW_RATE);
         left_rate = right_rate = apply_kickoff(left_command);
     }
+    const bool opening_hold = m_opening::hold(m_opening_phase.load());
+    if (opening_hold) {
+        left_command = right_command = left_rate = right_rate = 0.0f;
+        left_slew = SlewRate<float>(SLEW_RATE);
+        right_slew = SlewRate<float>(SLEW_RATE);
+    }
     // End-of-match motion overrides navigation and rejection; drive-disable is absolute.
     if (match_end::owns_intake(end_phase)) {
         left_command = right_command = end_phase == match_end::Phase::Reversing
@@ -203,6 +216,8 @@ void DriveTrainTask::loop() {
 
     left_motor.writeMicroseconds(map(left_rate, 1.0, -1.0, FORWARD_MS, REVERSE_MS));
     right_motor.writeMicroseconds(map(right_rate, 1.0, -1.0, REVERSE_MS, FORWARD_MS));
+
+    m_opening_stopped.store(opening_hold && left_rate == 0.0f && right_rate == 0.0f);
 
     telemetry::publish_f32(telemetry::KEY_LEFT_COMMAND, this->left_command);
     telemetry::publish_f32(telemetry::KEY_RIGHT_COMMAND, this->right_command);

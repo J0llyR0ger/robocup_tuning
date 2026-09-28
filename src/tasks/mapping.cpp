@@ -6,6 +6,7 @@
 #include "enemy_base.hpp"
 #include <Arduino.h>
 #include <mutexes.hpp>
+#include "m_opening.hpp"
 #include <queues.hpp>
 
 MappingTask::MappingTask() : SchedulerTask("mapping") {}
@@ -34,6 +35,7 @@ void MappingTask::loop() {
         }
         this->home_position = home_start_pose(blue).position;
         set_home_position(this->home_position);
+        set_opening_path({});
         set_home_path({});
         set_discovery_path({});
         set_motion_control_path({{}, 0.0f});
@@ -69,6 +71,12 @@ void MappingTask::loop() {
                                          (y + 0.5f) * OccupancyGridMap::TILE_SIZE_METERS);
             if (inside_enemy_base(centre)) this->occupancy_graph.blockCell(x, y);
         }
+    }
+
+    if (m_opening_phase.load() == m_opening::Phase::Approaching) {
+        set_opening_path(get_path_between_world_points(pose.position, m_opening_target()));
+    } else {
+        set_opening_path({});
     }
 
     float best_frontier_score = 0.0;

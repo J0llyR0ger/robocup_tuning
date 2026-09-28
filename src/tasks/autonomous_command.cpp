@@ -4,6 +4,7 @@
 #include "enemy_base.hpp"
 #include "telemetry_bus.hpp"
 #include <mutexes.hpp>
+#include "m_opening.hpp"
 #include "drive_enable.hpp"
 #include "match_end.hpp"
 #include "dummy_rejection.hpp"
@@ -71,6 +72,7 @@ void AutonomousCommandTask::defer_missed_weight(const Eigen::Vector2f &position)
 
 void AutonomousCommandTask::loop() {
     if (!drive_enabled.load() || match_end::owns_intake(match_end_phase.load())) {
+        opening_dwell = m_opening::Dwell{};
         dummy_rejection_priority.store(DummyRejectionPriority::Idle);
         dummy_release_confirmed.store(false);
         const real_pickup::Command no_recovery;
@@ -96,6 +98,42 @@ void AutonomousCommandTask::loop() {
         return;
     }
     auto robot_pose = get_global_pose();
+
+    const auto opening_phase = m_opening_phase.load();
+    if (m_opening::active(opening_phase)) {
+        // Complete the opening trip before collecting weights.
+        dummy_rejection_priority.store(DummyRejectionPriority::Idle);
+        const real_pickup::Command idle;
+        xQueueOverwrite(real_pickup_recovery_queue, &idle);
+        xQueueReset(intake_entry_queue);
+        const bool rails_up = true;
+        xQueueOverwrite(intake_position_queue, &rails_up);
+        const auto target = m_opening_target();
+        const bool arrived = (robot_pose.position - target).norm() <= M_OPENING_ARRIVAL_M;
+        const auto next = opening_dwell.update(opening_phase, millis(), arrived,
+            m_opening_stopped.load(), m_opening_servo_raised.load());
+        if (next != opening_phase) {
+            if (next == m_opening::Phase::Raising) {
+                // Heading is clockwise from +Y, in radians. Record the release once,
+                // 30 mm behind the current pose, using the permanent dummy exclusion list.
+                const Eigen::Vector2f forward(std::sin(robot_pose.heading), std::cos(robot_pose.heading));
+                const Eigen::Vector2f drop_position = robot_pose.position - forward * M_OPENING_DROP_BEHIND_M;
+                this->failed_weight_positions.push_back(drop_position);
+                Serial.printf("M OPENING: excluding dropped weight at (%.3f, %.3f)\n",
+                              drop_position.x(), drop_position.y());
+            }
+            Serial.printf("M OPENING: phase=%u\n", static_cast<unsigned>(next));
+            m_opening_phase.store(next);
+        }
+        auto path = get_opening_path();
+        const bool follow = next == m_opening::Phase::Approaching && !path.empty() &&
+                            (path.back() - target).norm() <= 0.20f;
+        set_motion_control_path(follow ? MotionControlPath{path, 0.6f} : MotionControlPath{{}, 0.0f});
+        const auto command = follow || next == m_opening::Phase::Done
+            ? MotionControlOverride::None : MotionControlOverride::HomeDropHold;
+        xQueueOverwrite(motion_control_override_queue, &command);
+        return;
+    }
 
     Eigen::Vector2f locking_center = robot_pose.position + robot_pose.get_direction_vector() * 0.5;
 

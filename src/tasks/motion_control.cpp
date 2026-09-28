@@ -16,8 +16,8 @@
 #define TURN_KD 45e-2 //alex - 30e-2
        
 //------- Joel edits -------
-static const uint32_t STUCK_TIME_MS = 160;
-static const uint32_t TURN_STUCK_TIME_MS = 300;
+static const uint32_t STUCK_TIME_MS = 180;
+static const uint32_t TURN_STUCK_TIME_MS = 350;
 static const float TURN_STUCK_MIN_COMMAND = 0.15f;
 static const float TURN_STUCK_MIN_ERROR = 10.0f * DEG_TO_RAD;
 static const float TURN_STUCK_MIN_PROGRESS = 3.0f * DEG_TO_RAD;

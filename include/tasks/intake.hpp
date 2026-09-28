@@ -4,6 +4,7 @@
 #include <HardwareSerial.h>
 #include <HerkulexServo.h>
 #include <Wire.h>
+#include <Servo.h>
 
 #include <SparkFunSX1509.h>
 #include <config.hpp>
@@ -21,6 +22,7 @@ class IntakeTask : public SchedulerTask {
     HerkulexServo left_servo = HerkulexServo(herkulexBus, 3);
     HerkulexServo right_servo = HerkulexServo(herkulexBus, 2);
 
+    Servo auxiliary_servo;
     SX1509 expander;
 
     WeightIntakeState weight_intake_state = WeightIntakeState::None;

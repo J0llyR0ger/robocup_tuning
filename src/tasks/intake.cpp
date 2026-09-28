@@ -1,6 +1,8 @@
 #include "tasks/intake.hpp"
 #include "Arduino.h"
 #include <mutexes.hpp>
+#include "m_opening.hpp"
+#include "tasks/display.hpp"
 #include "drive_enable.hpp"
 #include "match_end.hpp"
 #include "dummy_rejection.hpp"
@@ -24,6 +26,10 @@ int angleToNum(float angle) { return 512 + (int)(angle / 0.325); }
 
 void IntakeTask::setup() {
     Serial.println("INTAKE SETUP START");
+
+    // Start at 90 degrees; the LCD M selection controls the held position.
+    auxiliary_servo.attach(AUX_SERVO_PIN);
+    auxiliary_servo.write(AUX_SERVO_START_DEGREES);
 
     Serial7.begin(115200);
 
@@ -244,6 +250,17 @@ uint16_t readPins(bool &valid) {
 }
 
 void IntakeTask::loop() {
+    static int applied_aux_angle = AUX_SERVO_START_DEGREES;
+    const auto opening_phase = m_opening_phase.load();
+    const int aux_angle = m_opening::servo_up(opening_phase, menu_m_enabled.load())
+        ? AUX_SERVO_START_DEGREES : AUX_SERVO_M_DEGREES;
+    if (aux_angle != applied_aux_angle) {
+        auxiliary_servo.write(aux_angle);
+        applied_aux_angle = aux_angle;
+    }
+    m_opening_servo_raised.store(opening_phase == m_opening::Phase::Raising &&
+                                 applied_aux_angle == AUX_SERVO_START_DEGREES);
+
     bool pins_valid = false;
     uint16_t pins = readPins(pins_valid);
     bool early_probe_active = (pins & (1 << EARLY_INTAKE_PROBE_PIN)) == 0;
@@ -287,6 +304,21 @@ void IntakeTask::loop() {
         xQueueReset(intake_entry_queue);
         set_position(match_end::rails_up(end_phase));
         match_end_rails_applied.store(end_phase);
+        monitor_servos();
+        xQueueOverwrite(carried_weight_count, &this->total_weights);
+        return;
+    }
+
+    if (m_opening::active(m_opening_phase.load())) {
+        dummy_rejection_priority.store(DummyRejectionPriority::Idle);
+        dummy_release_detector.reset();
+        dummy_release_confirmed.store(false);
+        const real_pickup::Command idle;
+        xQueueOverwrite(real_pickup_recovery_queue, &idle);
+        xQueueReset(intake_entry_queue);
+        weight_intake_state = WeightIntakeState::None;
+        real_entry_seen = false;
+        set_position(true);
         monitor_servos();
         xQueueOverwrite(carried_weight_count, &this->total_weights);
         return;

@@ -70,6 +70,7 @@ void display_loop(void *) {
                         home_request_generation.fetch_add(1);
                     } else {
                         menu_m = !menu_m;
+                        menu_m_enabled.store(menu_m);
                     }
                 }
             }

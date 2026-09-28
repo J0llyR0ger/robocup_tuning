@@ -8,6 +8,11 @@ inline SemaphoreHandle_t i2cMutex = nullptr;
 inline SemaphoreHandle_t globalPoseMutex = nullptr;
 static inline Pose globalPose;
 
+inline SemaphoreHandle_t openingPathMutex = nullptr;
+inline std::vector<Eigen::Vector2f> openingPath;
+std::vector<Eigen::Vector2f> get_opening_path();
+void set_opening_path(std::vector<Eigen::Vector2f> path);
+
 void setupMutexes();
 Pose get_global_pose();
 void set_global_pose(Pose pose);

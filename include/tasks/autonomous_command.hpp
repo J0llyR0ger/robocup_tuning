@@ -7,9 +7,11 @@
 #include "tasks/motion_control.hpp"
 #include <config.hpp>
 #include <vector>
+#include "lib/m_opening.hpp"
 
 class AutonomousCommandTask : public SchedulerTask {
   private:
+    m_opening::Dwell opening_dwell;
     enum class DummyWeightRejectionState {
         Idle,
         ReverseUntilRelease,
