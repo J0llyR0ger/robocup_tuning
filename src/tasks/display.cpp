@@ -25,19 +25,19 @@ constexpr int JOYSTICK_CENTRE = 512;
 constexpr int JOYSTICK_DEAD_ZONE = 100;
 // A smaller return zone prevents noise at the edge from counting as a new move.
 constexpr int JOYSTICK_RETURN_ZONE = 60;
-unsigned selected_item = 0; // 0 = Home, 1 = M
+unsigned selected_item = 0; // 0 = Home, 1 = M, 2 = Return
 bool menu_m = false;
 bool joystick_armed = false;
 unsigned centred_samples = 0;
-constexpr uint8_t DISPLAY_ROWS[] = {0, 2, 3, 5, 7};
-char displayed_lines[5][17] = {};
+constexpr uint8_t DISPLAY_ROWS[] = {0, 2, 3, 4, 5, 7};
+char displayed_lines[6][17] = {};
 
 void display_loop(void *) {
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(100));
-        char lines[5][17] = {};
+        char lines[6][17] = {};
         const char *colour_label = poll_colour_sensor();
-        snprintf(lines[4], sizeof(lines[4]), "Colour:%s", colour_label);
+        snprintf(lines[5], sizeof(lines[5]), "Colour:%s", colour_label);
         bool inhibited = !drive_enabled.load() && !drive_start_pending.load();
         if (inhibited) {
             const int x = analogRead(JOYSTICK_X_PIN) - JOYSTICK_CENTRE;
@@ -64,16 +64,18 @@ void display_loop(void *) {
                     joystick_armed = false;
                     // A diagonal move acts on one axis only, whichever is stronger.
                     if (abs_y > abs_x) {
-                        selected_item ^= 1;
+                        selected_item = (selected_item + (y > 0 ? 1 : 2)) % 3;
                     } else if (selected_item == 0) {
                         const bool blue = !selected_home_blue.load();
                         selected_home_blue.store(blue);
                         active_home_blue.store(blue);
                         // Publish after the colour so localization and mapping update in setup.
                         home_request_generation.fetch_add(1);
-                    } else {
+                    } else if (selected_item == 1) {
                         menu_m = !menu_m;
                         menu_m_enabled.store(menu_m);
+                    } else {
+                        menu_return_count.store(menu_return_count.load() == 4 ? 3 : 4);
                     }
                 }
             }
@@ -83,14 +85,16 @@ void display_loop(void *) {
                      selected_item == 0 ? '>' : ' ', selected_home_blue.load() ? "blue" : "green");
             snprintf(lines[2], sizeof(lines[2]), "%c M: %s",
                      selected_item == 1 ? '>' : ' ', menu_m ? "Y" : "N");
-            snprintf(lines[3], sizeof(lines[3]), "MOTORS INHIBITED");
+            snprintf(lines[3], sizeof(lines[3]), "%c Return: %u",
+                     selected_item == 2 ? '>' : ' ', menu_return_count.load());
+            snprintf(lines[4], sizeof(lines[4]), "MOTORS INHIBITED");
         } else {
             // Re-entering setup requires centring, so a held stick cannot change it.
             joystick_armed = false;
             centred_samples = 0;
         }
 
-        for (unsigned row = 0; row < 5; ++row) {
+        for (unsigned row = 0; row < 6; ++row) {
             if (drive_enabled.load() || drive_start_pending.load()) {
                 // Blank all rows, including any drawn before the state changed.
                 if (inhibited) {
@@ -98,7 +102,7 @@ void display_loop(void *) {
                     joystick_armed = false;
                     centred_samples = 0;
                     memset(lines, 0, sizeof(lines));
-                    snprintf(lines[4], sizeof(lines[4]), "Colour:%s", colour_label);
+                    snprintf(lines[5], sizeof(lines[5]), "Colour:%s", colour_label);
                     row = 0;
                 }
             }

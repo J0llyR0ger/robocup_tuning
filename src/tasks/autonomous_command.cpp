@@ -9,6 +9,7 @@
 #include "drive_enable.hpp"
 #include "match_end.hpp"
 #include "dummy_rejection.hpp"
+#include "tasks/display.hpp"
 #include <queues.hpp>
 #include <algorithm>
 
@@ -364,9 +365,13 @@ void AutonomousCommandTask::loop() {
     uint8_t total_weights_carried = 0;
     xQueuePeek(carried_weight_count, &total_weights_carried, 0);
     const bool full_by_count = total_weights_carried >= 4 && !this->weight_sensed_pose.has_value();
-    if (this->home_return_state == HomeReturnState::Searching &&
-        (!storage_voltage_probe_high || full_by_count)) {
-        // Both storage detection and a full count must run the complete drop sequence.
+    bool storage_slot3_probe_high = true;
+    xQueuePeek(storage_slot3_voltage_probe_queue, &storage_slot3_probe_high, 0);
+    const bool return_requested = menu_return_count.load() == 3
+        ? !storage_slot3_probe_high
+        : (!storage_voltage_probe_high || full_by_count);
+    if (this->home_return_state == HomeReturnState::Searching && return_requested) {
+        // Either return mode runs the complete drop sequence.
         const auto target = active_home_position();
         Serial.printf("HOME: returning to %s, target=(%.3f, %.3f), pose=(%.3f, %.3f)\n",
                       active_home_blue.load() ? "blue" : "green",

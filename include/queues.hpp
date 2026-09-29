@@ -82,6 +82,8 @@ inline QueueHandle_t early_intake_probe_queue = xQueueCreate(1, sizeof(bool));
 
 // True is no metal (probe high); false is metal present (probe low).
 inline QueueHandle_t storage_voltage_probe_queue = xQueueCreate(1, sizeof(bool));
+// Same active-low convention for the slot 3 probe.
+inline QueueHandle_t storage_slot3_voltage_probe_queue = xQueueCreate(1, sizeof(bool));
 
 // True means rule, false means dummy
 inline QueueHandle_t intake_entry_queue = xQueueCreate(10, sizeof(bool));

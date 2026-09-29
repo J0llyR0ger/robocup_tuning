@@ -47,8 +47,10 @@ void IntakeTask::setup() {
     expander.pinMode(UPSIDE_DOWN_WEIGHT_SWITCH_PIN, INPUT);
     expander.pinMode(STORAGE_VOLTAGE_PROBE_PIN, INPUT);
     expander.pinMode(STORAGE_SLOT1_VOLTAGE_PROBE_PIN, INPUT);
+    expander.pinMode(STORAGE_SLOT3_VOLTAGE_PROBE_PIN, INPUT);
     expander.debouncePin(STORAGE_VOLTAGE_PROBE_PIN);
     expander.debouncePin(STORAGE_SLOT1_VOLTAGE_PROBE_PIN);
+    expander.debouncePin(STORAGE_SLOT3_VOLTAGE_PROBE_PIN);
     expander.pinMode(EARLY_INTAKE_PROBE_PIN, INPUT);
     expander.debouncePin(EARLY_INTAKE_PROBE_PIN);
 
@@ -284,6 +286,9 @@ void IntakeTask::loop() {
     xQueueOverwrite(intake_release_clear_queue, &release_clear);
     bool storage_voltage_probe_high = (pins & (1 << STORAGE_VOLTAGE_PROBE_PIN)) != 0;
     xQueueOverwrite(storage_voltage_probe_queue, &storage_voltage_probe_high);
+    const bool storage_slot3_probe_high = !pins_valid ||
+        (pins & (1 << STORAGE_SLOT3_VOLTAGE_PROBE_PIN)) != 0;
+    xQueueOverwrite(storage_slot3_voltage_probe_queue, &storage_slot3_probe_high);
     uint32_t now = millis();
     const match_end::Sensors end_sensors{pins_valid,
         (pins & (1 << STORAGE_SLOT1_VOLTAGE_PROBE_PIN)) == 0,

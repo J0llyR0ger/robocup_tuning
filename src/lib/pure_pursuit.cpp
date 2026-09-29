@@ -4,7 +4,7 @@
 
 using Eigen::Vector2f;
 
-const float TURN_DEADZONE = 0.1f; // Keep aligning until within 10 cm of the target.
+const float TURN_DEADZONE = 0.1f; // Stop steering correction within 10 cm of the target.
 
 PurePursuit::PurePursuit(float look_ahead_distance) : look_ahead_distance(look_ahead_distance) {}
 

@@ -26,6 +26,9 @@ static const int STORAGE_VOLTAGE_PROBE_PIN = 3;
 // Additional early intake probe on the SX1509; LOW means weight detected.
 static const int EARLY_INTAKE_PROBE_PIN = 4;
 
+// Storage slot 3 probe on the SX1509; LOW means occupied.
+static const int STORAGE_SLOT3_VOLTAGE_PROBE_PIN = 5;
+
 // Storage slot 1 probe on the SX1509; LOW means occupied.
 static const int STORAGE_SLOT1_VOLTAGE_PROBE_PIN = 6;
 
