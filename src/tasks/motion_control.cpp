@@ -11,7 +11,7 @@
 #define DRIVE_KP 25e-1 //alex 40e-1
 #define DRIVE_KI 0 // 20e-4
 
-#define TURN_KP 1.2//alex - 1
+#define TURN_KP 1.1//alex - 1
 #define TURN_KI 0
 #define TURN_KD 45e-2 //alex - 30e-2
        
@@ -30,10 +30,10 @@ static const uint32_t REVERSE_TIME_MS = 2000;
 
 static const float REVERSE_COMMAND = 0.20;
 static const float DUMMY_WEIGHT_REVERSE_SPEED = 0.10f;
-static const float HOME_DROP_REVERSE_SPEED = 0.20f;
+static const float HOME_DROP_REVERSE_SPEED = 0.40f;
 static const float PICKUP_REVERSE_SPEED = 0.20f;
 // Match the original maximum forward pickup command (0.5 * 1.5).
-static const float PICKUP_FORWARD_SPEED = 0.75f;
+static const float PICKUP_FORWARD_SPEED = 0.65f;
 // Extra inner-wheel reduction per unit of steering command during forward arcs.
 // Increase for tighter turns; zero leaves the standard drive/turn mix unchanged.
 static const float INNER_WHEEL_TURN_REDUCTION = 0.5f;
@@ -60,7 +60,7 @@ static MotionControlOverride motion_override = MotionControlOverride::None;
 MotionControlTask::MotionControlTask()
     : SchedulerTask("motion_control"), pure_pursuit(0.6),
       pid_drive(PIDController(DRIVE_KP, DRIVE_KI, 0, 10)
-                    .with_output_limits(-0.75, 0.75)
+                    .with_output_limits(-0.6, 0.6)
                     .with_integral_bounds(-100, 100)),
       pid_turn(PIDController(TURN_KP, TURN_KI, TURN_KD, 3 * DEG_TO_RAD)
                    .with_output_limits(-2.0, 2.0)

@@ -3,7 +3,7 @@
 
 namespace match_end {
 constexpr uint32_t PREPARE_AT_MS = 110000;
-constexpr uint32_t STOP_AT_MS = 120000;
+constexpr uint32_t STOP_AT_MS = 123000;
 constexpr uint32_t LOWER_TIME_MS = 200;
 constexpr uint32_t LIFT_TIME_MS = 400;
 constexpr uint32_t RELEASE_TIME_MS = 20;

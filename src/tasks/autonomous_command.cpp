@@ -16,7 +16,7 @@ AutonomousCommandTask::AutonomousCommandTask() : SchedulerTask("autonomous_comma
 
 // Stop and lift after the second entry-switch LOW during measured reverse motion.
 static const uint32_t DUMMY_WEIGHT_LIFT_MS = 400;
-static const uint32_t DUMMY_WEIGHT_CLEARANCE_MS = 1400;
+static const uint32_t DUMMY_WEIGHT_CLEARANCE_MS = 2400;
 static const uint32_t DUMMY_WEIGHT_RELEASE_TIMEOUT_MS = 3000;
 // Once a target enters the final pickup zone, do not let intermittent tracking
 // raise the rails before it reaches the intake switch.  This is only a failsafe

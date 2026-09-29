@@ -74,7 +74,7 @@ static const int REVERSE_MS = 1050;
 
 static const float RADIANS_PER_TICK = 2.0 * PI / (float)TICKS_PER_REVOLUTION;
 
-static const float LEFT_SCALE = 0.75;
+static const float LEFT_SCALE = 1.0;
 
 static const float KICKOFF_VALUE = 0.2;
 

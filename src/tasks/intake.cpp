@@ -217,7 +217,7 @@ void IntakeTask::monitor_servos() {
 const int IO_EXPANDER_ADDRESS = 0x3E;
 const int PIN_INPUT_STATE_ADDRESS = 0x10;
 
-const int CONDUCTION_DEBOUNCER_TIME = 100;
+const int CONDUCTION_DEBOUNCER_TIME = 200;
 
 uint16_t readPins(bool &valid) {
     valid = false;
