@@ -88,7 +88,7 @@ static const char *read_colour_sensor() {
                 !write_register(0x00, 0x01)) failed(now);
             else {
                 state = State::Powering; changed_at = now; label = "STARTING";
-                Serial.printf("COLOUR: TCS34725 on Wire1 (CON62), %s, channel=%u\n", bus.selected ? "mux" : "direct", colour_config::MUX_CHANNEL);
+                // Serial.printf("COLOUR: TCS34725 on Wire1 (CON62), %s, channel=%u\n", bus.selected ? "mux" : "direct", colour_config::MUX_CHANNEL);
             }
         } else if (state == State::Powering && now - changed_at >= 3) {
             if (!write_register(0x00, 0x03)) failed(now);
@@ -109,7 +109,7 @@ static const char *read_colour_sensor() {
                 label = count >= colour_config::STABLE_SAMPLES ? colour::name(stable) : "READING";
                 if (now - last_log >= 1000) {
                     last_log = now;
-                    Serial.printf("COLOUR: %s R=%u G=%u B=%u C=%u\n", label, r, g, b, c);
+                    // Serial.printf("COLOUR: %s R=%u G=%u B=%u C=%u\n", label, r, g, b, c);
                 }
             }
         }

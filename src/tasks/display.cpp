@@ -127,7 +127,7 @@ void start_display_task() {
         }
     }
     if (address == 0) {
-        Serial.println("DISPLAY: no OLED at 0x3C/0x3D; display task skipped");
+        // Serial.println("DISPLAY: no OLED at 0x3C/0x3D; display task skipped");
         return;
     }
 
@@ -139,10 +139,10 @@ void start_display_task() {
     // Configure inputs only; sampling happens exclusively in the inhibited branch.
     pinMode(JOYSTICK_X_PIN, INPUT);
     pinMode(JOYSTICK_Y_PIN, INPUT);
-    Serial.printf("DISPLAY: OLED responding at 0x%02X\n", address);
+    // Serial.printf("DISPLAY: OLED responding at 0x%02X\n", address);
 
     if (xTaskCreate(display_loop, "display", 1024, nullptr, 1, nullptr) != pdPASS) {
         display.clearDisplay();
-        Serial.println("DISPLAY: task creation failed");
+        // Serial.println("DISPLAY: task creation failed");
     }
 }

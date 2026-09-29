@@ -113,20 +113,20 @@ void PositionTrackingTask::loop() {
         odometry_distance < 0.0090f &&
         mcl_distance > 0.018f;
 
-    Serial.print("ODO: ");
-    Serial.print(odometry_distance * 1000.0f);
-    Serial.print(" mm | MCL: ");
-    Serial.print(mcl_distance * 1000.0f);
-    Serial.print(" mm | Ratio: ");
+    // Serial.print("ODO: ");
+    // Serial.print(odometry_distance * 1000.0f);
+    // Serial.print(" mm | MCL: ");
+    // Serial.print(mcl_distance * 1000.0f);
+    // Serial.print(" mm | Ratio: ");
 
     if (odometry_distance > 0.0f) {
-        Serial.print(mcl_distance / odometry_distance);
+        // Serial.print(mcl_distance / odometry_distance);
     } else {
-        Serial.print(0.0f);
+        // Serial.print(0.0f);
     }
 
-    Serial.print(" | Mismatch: ");
-    Serial.println(motion_mismatch ? "YES" : "NO");
+    // Serial.print(" | Mismatch: ");
+    // Serial.println(motion_mismatch ? "YES" : "NO");
 
     set_robot_motion_mismatch(motion_mismatch);
 

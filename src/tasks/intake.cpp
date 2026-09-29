@@ -25,7 +25,7 @@ const int KI = 0x0200;
 int angleToNum(float angle) { return 512 + (int)(angle / 0.325); }
 
 void IntakeTask::setup() {
-    Serial.println("INTAKE SETUP START");
+    // Serial.println("INTAKE SETUP START");
 
     // Start at 90 degrees; the LCD M selection controls the held position.
     auxiliary_servo.attach(AUX_SERVO_PIN);
@@ -39,7 +39,7 @@ void IntakeTask::setup() {
     this->set_position(true);
 
     if (!expander.begin(0x3E)) {
-        Serial.println("Failed to communicate with SX1509. Check wiring!");
+        // Serial.println("Failed to communicate with SX1509. Check wiring!");
     }
 
     expander.pinMode(ENTRY_CONDUCTION_PIN, INPUT);
@@ -103,24 +103,24 @@ static const uint8_t RAIL_SERVO_IDS[] = {3, 2};
 static const char *RAIL_SERVO_NAMES[] = {"left", "right"};
 
 static void print_servo_health(uint8_t index, uint8_t error, uint8_t detail) {
-    Serial.printf("RAIL SERVO %s id=%u error=0x%02X detail=0x%02X motor=%s:",
-                  RAIL_SERVO_NAMES[index], RAIL_SERVO_IDS[index], error, detail,
-                  (detail & 0x40) ? "ON" : "OFF");
-    if (error & 0x01) Serial.print(" INPUT_VOLTAGE");
-    if (error & 0x02) Serial.print(" POSITION_LIMIT");
-    if (error & 0x04) Serial.print(" TEMPERATURE_LIMIT");
-    if (error & 0x08) Serial.print(" INVALID_PACKET");
-    if (error & 0x10) Serial.print(" OVERLOAD");
-    if (error & 0x20) Serial.print(" DRIVER_FAULT");
-    if (error & 0x40) Serial.print(" EEPROM_FAULT");
-    if (error & 0x80) Serial.print(" RESERVED_ERROR");
-    if (detail & 0x04) Serial.print(" CHECKSUM_ERROR");
-    if (detail & 0x08) Serial.print(" UNKNOWN_COMMAND");
-    if (detail & 0x10) Serial.print(" REGISTER_RANGE");
-    if (detail & 0x20) Serial.print(" GARBAGE_DETECTED");
-    if (!(detail & 0x40)) Serial.print(" MOTOR_DISABLED");
-    if (!error && !(detail & 0x3C) && (detail & 0x40)) Serial.print(" OK");
-    Serial.println();
+    // Serial.printf("RAIL SERVO %s id=%u error=0x%02X detail=0x%02X motor=%s:",
+    //               RAIL_SERVO_NAMES[index], RAIL_SERVO_IDS[index], error, detail,
+    //               (detail & 0x40) ? "ON" : "OFF");
+    // if (error & 0x01) Serial.print(" INPUT_VOLTAGE");
+    // if (error & 0x02) Serial.print(" POSITION_LIMIT");
+    // if (error & 0x04) Serial.print(" TEMPERATURE_LIMIT");
+    // if (error & 0x08) Serial.print(" INVALID_PACKET");
+    // if (error & 0x10) Serial.print(" OVERLOAD");
+    // if (error & 0x20) Serial.print(" DRIVER_FAULT");
+    // if (error & 0x40) Serial.print(" EEPROM_FAULT");
+    // if (error & 0x80) Serial.print(" RESERVED_ERROR");
+    // if (detail & 0x04) Serial.print(" CHECKSUM_ERROR");
+    // if (detail & 0x08) Serial.print(" UNKNOWN_COMMAND");
+    // if (detail & 0x10) Serial.print(" REGISTER_RANGE");
+    // if (detail & 0x20) Serial.print(" GARBAGE_DETECTED");
+    // if (!(detail & 0x40)) Serial.print(" MOTOR_DISABLED");
+    // if (!error && !(detail & 0x3C) && (detail & 0x40)) Serial.print(" OK");
+    // Serial.println();
 }
 
 void IntakeTask::monitor_servos() {
@@ -141,8 +141,8 @@ void IntakeTask::monitor_servos() {
         if (!health.initialized || !health.responding ||
             health.error != packet.status_error || health.detail != detail) {
             if (health.initialized && !health.responding) {
-                Serial.printf("RAIL SERVO %s id=%u: communication restored\n",
-                              RAIL_SERVO_NAMES[servo_status_index], packet.id);
+                // Serial.printf("RAIL SERVO %s id=%u: communication restored\n",
+                //               RAIL_SERVO_NAMES[servo_status_index], packet.id);
             }
             print_servo_health(servo_status_index, packet.status_error, packet.status_detail);
         }
@@ -163,9 +163,9 @@ void IntakeTask::monitor_servos() {
             auto &servo = servo_status_index == 0 ? left_servo : right_servo;
             ++health.reset_attempts;
             health.fault_since = now;
-            Serial.printf("RAIL SERVO %s id=%u: reset attempt %u/%u\n",
-                          RAIL_SERVO_NAMES[servo_status_index], servo.getID(),
-                          health.reset_attempts, SERVO_MAX_RESET_ATTEMPTS);
+            // Serial.printf("RAIL SERVO %s id=%u: reset attempt %u/%u\n",
+            //               RAIL_SERVO_NAMES[servo_status_index], servo.getID(),
+            //               health.reset_attempts, SERVO_MAX_RESET_ATTEMPTS);
             // Clear the two status bytes, re-enable torque, and restore the target.
             servo.writeRam2(HerkulexRamRegister::StatusError, 0);
             servo.setTorqueOn();
@@ -187,8 +187,8 @@ void IntakeTask::monitor_servos() {
             }
             // Only later valid status replies can confirm recovery.
             if (health.reset_attempts == SERVO_MAX_RESET_ATTEMPTS) {
-                Serial.printf("RAIL SERVO %s: automatic reset budget exhausted until restart\n",
-                              RAIL_SERVO_NAMES[servo_status_index]);
+                // Serial.printf("RAIL SERVO %s: automatic reset budget exhausted until restart\n",
+                //               RAIL_SERVO_NAMES[servo_status_index]);
             }
         }
         servo_status_pending = false;
@@ -198,8 +198,8 @@ void IntakeTask::monitor_servos() {
     if (servo_status_pending && now - servo_status_last_request >= SERVO_STATUS_TIMEOUT_MS) {
         auto &health = servo_health[servo_status_index];
         if (!health.initialized || health.responding) {
-            Serial.printf("RAIL SERVO %s id=%u: NO VALID STATUS REPLY (fault unknown)\n",
-                          RAIL_SERVO_NAMES[servo_status_index], RAIL_SERVO_IDS[servo_status_index]);
+            // Serial.printf("RAIL SERVO %s id=%u: NO VALID STATUS REPLY (fault unknown)\n",
+            //               RAIL_SERVO_NAMES[servo_status_index], RAIL_SERVO_IDS[servo_status_index]);
         }
         health.initialized = true;
         health.responding = false;
@@ -330,7 +330,7 @@ void IntakeTask::loop() {
     if (!storage_voltage_probe_initialized ||
         storage_voltage_probe_high != storage_voltage_probe_last_high ||
         now - storage_voltage_probe_last_print_time >= STORAGE_VOLTAGE_PROBE_PRINT_INTERVAL_MS) {
-        Serial.println(storage_voltage_probe_high ? "HIGH" : "LOW");
+        // Serial.println(storage_voltage_probe_high ? "HIGH" : "LOW");
         storage_voltage_probe_last_high = storage_voltage_probe_high;
         storage_voltage_probe_initialized = true;
         storage_voltage_probe_last_print_time = now;

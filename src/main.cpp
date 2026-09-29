@@ -76,30 +76,30 @@ static void timing_log_task(void *) {
             continue;
         }
 
-        Serial.println("=======BEGIN TIMING INFO=======");
+        // Serial.println("=======BEGIN TIMING INFO=======");
 
         int summed_average_time = 0;
         int summed_period_time = 0;
         for (size_t i = 0; i < NUM_TASKS; i++) {
             const SchedulerTask::TimingData &timing = tasks[i]->timing_data;
 
-            Serial.printf("%s: %dus\n", tasks[i]->task_name, tasks[i]->get_period_micros());
+            // Serial.printf("%s: %dus\n", tasks[i]->task_name, tasks[i]->get_period_micros());
 
-            Serial.printf("|  Average: %dus\n", timing.average_time);
-            Serial.printf("|  Min: %dus\n", timing.min_time);
-            Serial.printf("|  Max: %dus\n", timing.max_time);
-            Serial.printf(
-                "|  Average task load: %d%%\n",
-                (int)(100.0 * (float)timing.average_time / (float)tasks[i]->get_period_micros()));
+            // Serial.printf("|  Average: %dus\n", timing.average_time);
+            // Serial.printf("|  Min: %dus\n", timing.min_time);
+            // Serial.printf("|  Max: %dus\n", timing.max_time);
+            // Serial.printf(
+                // "|  Average task load: %d%%\n",
+                // (int)(100.0 * (float)timing.average_time / (float)tasks[i]->get_period_micros()));
 
             summed_average_time += timing.average_time;
             summed_period_time += tasks[i]->get_period_micros();
         }
 
-        Serial.printf("Average CPU load: %d%%\n",
-                      (int)(100.0 * (float)summed_average_time / (float)summed_period_time));
+        // Serial.printf("Average CPU load: %d%%\n",
+                      // (int)(100.0 * (float)summed_average_time / (float)summed_period_time));
 
-        Serial.println("=======END TIMING INFO=======");
+        // Serial.println("=======END TIMING INFO=======");
     }
 }
 
@@ -107,14 +107,14 @@ void setup() {
     Serial.begin(115200);
 
     if (CrashReport) {
-        Serial.print(CrashReport);
-        Serial.println();
+        // Serial.print(CrashReport);
+        // Serial.println();
         Serial.flush();
     }
 
-    Serial.println(PSTR("\r\nBooting FreeRTOS kernel " tskKERNEL_VERSION_NUMBER
-                        ". Built by gcc " __VERSION__ " (newlib " _NEWLIB_VERSION ") on " __DATE__
-                        ". ***\r\n"));
+    // Serial.println(PSTR("\r\nBooting FreeRTOS kernel " tskKERNEL_VERSION_NUMBER
+                        // ". Built by gcc " __VERSION__ " (newlib " _NEWLIB_VERSION ") on " __DATE__
+                        // ". ***\r\n"));
 
     setupMutexes();
 

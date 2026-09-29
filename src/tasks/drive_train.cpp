@@ -25,7 +25,7 @@ void DriveTrainTask::setup() {
     button_changed_at = millis();
     button_armed = false; // Require a stable release, including at boot.
     last_timestamp = micros();
-    Serial.println("DRIVE: inhibited; press blue to enable");
+    // Serial.println("DRIVE: inhibited; press blue to enable");
 }
 
 void DriveTrainTask::update_drive_button() {
@@ -64,7 +64,7 @@ void DriveTrainTask::update_drive_button() {
         match_end_phase.store(match_controller.phase);
         // Home is already applied by the display. Wait for its pose/map update.
         drive_start_pending.store(true);
-        Serial.println(active_home_blue.load() ? "HOME: blue selected" : "HOME: green selected");
+        // Serial.println(active_home_blue.load() ? "HOME: blue selected" : "HOME: green selected");
     }
 }
 
@@ -99,7 +99,7 @@ void DriveTrainTask::loop() {
         match_end_rails_applied.load(), match_end_returning_home.load());
     match_end_phase.store(end_phase);
     if (end_phase != old_phase) {
-        Serial.printf("MATCH: end phase=%u\n", static_cast<unsigned>(end_phase));
+        // Serial.printf("MATCH: end phase=%u\n", static_cast<unsigned>(end_phase));
     }
     if (end_phase == match_end::Phase::Finished) {
         drive_enabled.store(false);
@@ -109,7 +109,7 @@ void DriveTrainTask::loop() {
         if (old_phase != end_phase) {
             // A button held across the deadline cannot immediately restart the robot.
             button_armed = false;
-            Serial.println("DRIVE: inhibited; match complete");
+            // Serial.println("DRIVE: inhibited; match complete");
         }
     }
     const uint32_t generation = home_request_generation.load();
@@ -119,7 +119,7 @@ void DriveTrainTask::loop() {
         left_command = right_command = 0.0f;
         drive_start_pending.store(false);
         drive_enabled.store(true);
-        Serial.println("DRIVE: enabled; home ready");
+        // Serial.println("DRIVE: enabled; home ready");
     }
     std::tuple<float, float> new_commands;
 

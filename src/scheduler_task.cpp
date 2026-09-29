@@ -48,27 +48,27 @@ void SchedulerTask::start(uint32_t priority) {
 void SchedulerTask::log(const char *format, ...) {
     return;
 
-    Serial.printf("[LOG][%s]: ", task_name);
+    // Serial.printf("[LOG][%s]: ", task_name);
 
     va_list args;
 
     va_start(args, format);
-    Serial.printf(format, args);
+    // Serial.printf(format, args);
     va_end(args);
 
-    Serial.println("");
+    // Serial.println("");
 }
 
 void SchedulerTask::log_err(const char *format, ...) {
     return;
 
-    Serial.printf("[ERR][%s]: ", task_name);
+    // Serial.printf("[ERR][%s]: ", task_name);
 
     va_list args;
 
     va_start(args, format);
-    Serial.printf(format, args);
+    // Serial.printf(format, args);
     va_end(args);
 
-    Serial.println("");
+    // Serial.println("");
 }
