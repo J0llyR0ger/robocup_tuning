@@ -27,7 +27,7 @@ static const uint32_t PICKUP_ATTEMPT_TIMEOUT_MS = 5000;
 static const uint32_t REAL_WEIGHT_RAIL_RAISE_TIMEOUT_MS = 750;
 // Keep rails at intake level through realignment, braking, and forward pickup.
 static const uint32_t PICKUP_BRAKE_MS = 400;
-static const uint32_t PICKUP_REVERSE_MS = 500;
+static const uint32_t PICKUP_REVERSE_MS = 1000;
 // One bounded forward interval at the faster pickup speed; entry does not restart it.
 static const uint32_t PICKUP_FORWARD_MS = 400;
 // Allow extra forward travel to reseat a weight after backing away from it.

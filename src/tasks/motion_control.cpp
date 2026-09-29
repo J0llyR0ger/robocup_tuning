@@ -29,8 +29,8 @@ static const uint32_t STUCK_RECOVERY_STARTUP_DELAY_MS = 2000;
 static const uint32_t REVERSE_TIME_MS = 2000;
 
 static const float REVERSE_COMMAND = 0.20;
-static const float DUMMY_WEIGHT_REVERSE_SPEED = 0.10f;
-static const float HOME_DROP_REVERSE_SPEED = 0.20f;
+static const float DUMMY_WEIGHT_REVERSE_SPEED = 0.15f;
+static const float HOME_DROP_REVERSE_SPEED = 0.60f;
 static const float PICKUP_REVERSE_SPEED = 0.20f;
 // Match the original maximum forward pickup command (0.5 * 1.5).
 static const float PICKUP_FORWARD_SPEED = 0.75f;
