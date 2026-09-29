@@ -21,9 +21,9 @@ class OccupancyGridMap {
     static constexpr uint8_t OCCUPIED_INCREMENT = 16;
 
     static constexpr size_t MIN_FRONTIER_CLUSTER_SIZE = 4;
-    static constexpr uint8_t WEIGHT_CLUSTER_OCCUPIED_THRESHOLD = 135;   //alex 200
-    static constexpr size_t MAX_WEIGHT_CLUSTER_SIZE = 2;    //alex - 4
-    static constexpr int WEIGHT_CLUSTER_CLEAR_RADIUS = 3;   // alex - 2
+    static constexpr uint8_t WEIGHT_CLUSTER_OCCUPIED_THRESHOLD = 135; // alex 200
+    static constexpr size_t MAX_WEIGHT_CLUSTER_SIZE = 2;              // alex - 4
+    static constexpr int WEIGHT_CLUSTER_CLEAR_RADIUS = 3;             // alex - 2
 
     struct FrontierCell {
         int x = 0;
@@ -71,7 +71,7 @@ class OccupancyGridMap {
 
     void apply_beam(const Eigen::Vector2f &origin_world, const Eigen::Vector2f &hit_world);
     void update_frontiers();
-    void update_weight_clusters();
+    void update_weight_clusters(const Pose &robot_pose);
 
     void increase_cell(int grid_x, int grid_y);
     void decrease_cell(int grid_x, int grid_y);

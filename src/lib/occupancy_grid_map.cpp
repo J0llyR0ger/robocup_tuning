@@ -86,6 +86,56 @@ bool has_empty_radius(
     return true;
 }
 
+bool has_line_of_sight(
+    const std::array<uint8_t, OccupancyGridMap::GRID_WIDTH * OccupancyGridMap::GRID_HEIGHT> &scores,
+    const Eigen::Vector2f &robot_world_position, const Eigen::Vector2f &target_world_position) {
+    const float inv_tile_size = 1.0f / OccupancyGridMap::TILE_SIZE_METERS;
+    const int robot_x = static_cast<int>(std::floor(robot_world_position.x() * inv_tile_size));
+    const int robot_y = static_cast<int>(std::floor(robot_world_position.y() * inv_tile_size));
+    const int target_x = static_cast<int>(std::floor(target_world_position.x() * inv_tile_size));
+    const int target_y = static_cast<int>(std::floor(target_world_position.y() * inv_tile_size));
+
+    if (!in_bounds(robot_x, robot_y) || !in_bounds(target_x, target_y)) {
+        return false;
+    }
+
+    if (robot_x == target_x && robot_y == target_y) {
+        return true;
+    }
+
+    int dx = abs_int(target_x - robot_x);
+    int dy = abs_int(target_y - robot_y);
+    int sx = robot_x < target_x ? 1 : -1;
+    int sy = robot_y < target_y ? 1 : -1;
+    int err = dx - dy;
+
+    int x = robot_x;
+    int y = robot_y;
+    while (x != target_x || y != target_y) {
+        const bool is_start = x == robot_x && y == robot_y;
+        const bool is_end = x == target_x && y == target_y;
+        if (!is_start && !is_end) {
+            const size_t idx =
+                static_cast<size_t>(y) * OccupancyGridMap::GRID_WIDTH + static_cast<size_t>(x);
+            if (scores[idx] >= OccupancyGridMap::WEIGHT_CLUSTER_OCCUPIED_THRESHOLD) {
+                return false;
+            }
+        }
+
+        const int e2 = err * 2;
+        if (e2 > -dy) {
+            err -= dy;
+            x += sx;
+        }
+        if (e2 < dx) {
+            err += dx;
+            y += sy;
+        }
+    }
+
+    return true;
+}
+
 } // namespace
 
 OccupancyGridMap::OccupancyGridMap() { this->clear(); }
@@ -206,8 +256,18 @@ std::vector<OccupancyGridMap::WeightCluster> OccupancyGridMap::find_weight_clust
     return clusters;
 }
 
-void OccupancyGridMap::update_weight_clusters() {
-    this->weight_clusters = this->find_weight_clusters();
+void OccupancyGridMap::update_weight_clusters(const Pose &robot_pose) {
+    std::vector<WeightCluster> clusters = this->find_weight_clusters();
+    std::vector<WeightCluster> visible_clusters;
+    visible_clusters.reserve(clusters.size());
+
+    for (const auto &cluster : clusters) {
+        if (has_line_of_sight(this->scores, robot_pose.position, cluster.centroid)) {
+            visible_clusters.push_back(cluster);
+        }
+    }
+
+    this->weight_clusters = std::move(visible_clusters);
 }
 
 void OccupancyGridMap::update_from_lidar(const Pose &robot_pose,
@@ -242,7 +302,7 @@ void OccupancyGridMap::update_from_lidar(const Pose &robot_pose,
     }
 
     this->update_frontiers();
-    this->update_weight_clusters();
+    this->update_weight_clusters(robot_pose);
 }
 
 uint8_t OccupancyGridMap::get_score(size_t x, size_t y) const {
