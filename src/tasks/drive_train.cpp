@@ -29,6 +29,11 @@ void DriveTrainTask::setup() {
 }
 
 void DriveTrainTask::update_drive_button() {
+    // Match completion locks out the start button until reboot.
+    if (match_controller.phase == match_end::Phase::Finished) {
+        button_armed = false;
+        return;
+    }
     const uint32_t now = millis();
     const bool pressed = digitalRead(BLUE_BUTTON_PIN) ==
                          (BLUE_BUTTON_ACTIVE_LOW ? LOW : HIGH);

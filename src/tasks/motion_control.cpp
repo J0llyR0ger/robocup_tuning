@@ -11,7 +11,7 @@
 #define DRIVE_KP 25e-1 //alex 40e-1
 #define DRIVE_KI 0 // 20e-4
 
-#define TURN_KP 1.2//alex - 1
+#define TURN_KP 1.2 // Stronger heading correction when approaching targets.
 #define TURN_KI 0
 #define TURN_KD 45e-2 //alex - 30e-2
        
