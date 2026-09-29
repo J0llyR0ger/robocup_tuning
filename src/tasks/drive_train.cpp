@@ -74,7 +74,7 @@ static const int REVERSE_MS = 1050;
 
 static const float RADIANS_PER_TICK = 2.0 * PI / (float)TICKS_PER_REVOLUTION;
 
-static const float LEFT_SCALE = 0.75;
+static const float RIGHT_SCALE = 0.85;
 
 static const float KICKOFF_VALUE = 0.2;
 
@@ -137,9 +137,7 @@ void DriveTrainTask::loop() {
     float left_out = this->left_command;
     float right_out = this->right_command;
 
-    if (left_out > 0.0) {
-        left_out *= LEFT_SCALE;
-    }
+    right_out *= RIGHT_SCALE;
 
     left_out = apply_kickoff(left_out);
     right_out = apply_kickoff(right_out);
@@ -232,8 +230,6 @@ void DriveTrainTask::loop() {
 
     float left_velocity = RADIANS_PER_TICK * (float)(left_ticks - last_left_ticks) / dt;
     float right_velocity = RADIANS_PER_TICK * (float)(right_ticks - last_right_ticks) / dt;
-
-    
 
     last_left_ticks = left_ticks;
     last_right_ticks = right_ticks;
