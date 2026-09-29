@@ -6,7 +6,6 @@
 static const int BLUE_BUTTON_PIN = A6;
 static const bool BLUE_BUTTON_ACTIVE_LOW = true;
 static const uint32_t BLUE_BUTTON_DEBOUNCE_MS = 40;
-static const uint32_t BLUE_BUTTON_OFF_HOLD_MS = 1000;
 
 // Motor Control
 static const int LEFT_MOTOR_CONTROL_PIN = 1;

@@ -1,6 +1,7 @@
 #include "arduino_freertos.h"
 #include "tasks/display.hpp"
 #include "config/display.hpp"
+#include "colour_sensor.hpp"
 #include "drive_enable.hpp"
 #include "home_selection.hpp"
 #include "mutexes.hpp"
@@ -28,13 +29,15 @@ unsigned selected_item = 0; // 0 = Home, 1 = M
 bool menu_m = false;
 bool joystick_armed = false;
 unsigned centred_samples = 0;
-constexpr uint8_t DISPLAY_ROWS[] = {0, 2, 3, 5};
-char displayed_lines[4][17] = {};
+constexpr uint8_t DISPLAY_ROWS[] = {0, 2, 3, 5, 7};
+char displayed_lines[5][17] = {};
 
 void display_loop(void *) {
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(100));
-        char lines[4][17] = {};
+        char lines[5][17] = {};
+        const char *colour_label = poll_colour_sensor();
+        snprintf(lines[4], sizeof(lines[4]), "Colour:%s", colour_label);
         bool inhibited = !drive_enabled.load() && !drive_start_pending.load();
         if (inhibited) {
             const int x = analogRead(JOYSTICK_X_PIN) - JOYSTICK_CENTRE;
@@ -87,7 +90,7 @@ void display_loop(void *) {
             centred_samples = 0;
         }
 
-        for (unsigned row = 0; row < 4; ++row) {
+        for (unsigned row = 0; row < 5; ++row) {
             if (drive_enabled.load() || drive_start_pending.load()) {
                 // Blank all rows, including any drawn before the state changed.
                 if (inhibited) {
@@ -95,6 +98,7 @@ void display_loop(void *) {
                     joystick_armed = false;
                     centred_samples = 0;
                     memset(lines, 0, sizeof(lines));
+                    snprintf(lines[4], sizeof(lines[4]), "Colour:%s", colour_label);
                     row = 0;
                 }
             }

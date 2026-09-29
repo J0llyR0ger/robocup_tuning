@@ -11,13 +11,13 @@
 #define DRIVE_KP 25e-1 //alex 40e-1
 #define DRIVE_KI 0 // 20e-4
 
-#define TURN_KP 1.15//alex - 1
+#define TURN_KP 1.2//alex - 1
 #define TURN_KI 0
 #define TURN_KD 45e-2 //alex - 30e-2
        
 //------- Joel edits -------
-static const uint32_t STUCK_TIME_MS = 180;
-static const uint32_t TURN_STUCK_TIME_MS = 350;
+static const uint32_t STUCK_TIME_MS = 195;
+static const uint32_t TURN_STUCK_TIME_MS = 370;
 static const float TURN_STUCK_MIN_COMMAND = 0.15f;
 static const float TURN_STUCK_MIN_ERROR = 10.0f * DEG_TO_RAD;
 static const float TURN_STUCK_MIN_PROGRESS = 3.0f * DEG_TO_RAD;
@@ -25,8 +25,8 @@ static bool turn_stuck_timer_running = false;
 static uint32_t turn_progress_start_time = 0;
 static float turn_progress_heading = 0.0f;
 static bool turn_progress_positive = false;
-static const uint32_t STUCK_RECOVERY_STARTUP_DELAY_MS = 3000;
-static const uint32_t REVERSE_TIME_MS = 1600;
+static const uint32_t STUCK_RECOVERY_STARTUP_DELAY_MS = 2000;
+static const uint32_t REVERSE_TIME_MS = 2000;
 
 static const float REVERSE_COMMAND = 0.20;
 static const float DUMMY_WEIGHT_REVERSE_SPEED = 0.10f;

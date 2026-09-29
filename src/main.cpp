@@ -121,6 +121,10 @@ void setup() {
     Wire.begin();
     Wire.setClock(400e3);
 
+    // CON62 RAW I2C1 colour sensor; LCD and existing sensors stay on Wire.
+    Wire1.begin();
+    Wire1.setClock(400000);
+
     start_display_task();
 
     start_tasks_rate_monotonic();

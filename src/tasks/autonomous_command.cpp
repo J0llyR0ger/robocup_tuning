@@ -1,6 +1,7 @@
 #include "tasks/autonomous_command.hpp"
 #include "Arduino.h"
 #include "home_selection.hpp"
+#include "colour_sensor.hpp"
 #include "enemy_base.hpp"
 #include "telemetry_bus.hpp"
 #include <mutexes.hpp>
@@ -47,7 +48,7 @@ static const float HOME_PROGRESS_DISTANCE_M = 0.05f;
 // Retain near-home progress history through modest localization jitter.
 static const float HOME_STUCK_EXIT_DISTANCE_M = 0.8f;
 static const uint32_t HOME_STUCK_TIMEOUT_MS = 1500;
-static const uint32_t HOME_DROP_RELEASE_TIME_MS = 1700;
+static const uint32_t HOME_DROP_RELEASE_TIME_MS = 2300;
 static const uint32_t HOME_DROP_REVERSE_TIME_MS = 2500;
 
 void AutonomousCommandTask::setup() {}
@@ -81,6 +82,7 @@ void AutonomousCommandTask::loop() {
         pickup_state = PickupState::Idle;
         dummy_weight_rejection_state = DummyWeightRejectionState::Idle;
         home_return_state = HomeReturnState::Searching;
+        match_end_returning_home.store(false);
         pickup_attempt_rails_down = false;
         weight_sensed_pose.reset();
         intake_weight_position.reset();
@@ -374,6 +376,7 @@ void AutonomousCommandTask::loop() {
         this->approached_weight_position = std::nullopt;
         this->pickup_attempt_rails_down = false;
         this->home_best_distance = std::nullopt;
+        match_end_returning_home.store(true);
         this->home_return_state = HomeReturnState::ReturningHome;
     }
 
@@ -414,7 +417,8 @@ void AutonomousCommandTask::loop() {
                 (recovery_reversing ||
                  home_now - this->home_progress_start_time >= HOME_STUCK_TIMEOUT_MS);
 
-            if (at_selected_base) {
+            if (at_selected_base && current_colour() ==
+                (active_home_blue.load() ? colour::Value::Blue : colour::Value::Green)) {
                 Serial.printf("HOME: releasing at %s, target=(%.3f, %.3f), pose=(%.3f, %.3f), distance=%.2f m\n",
                               active_home_blue.load() ? "blue" : "green", target.x(), target.y(),
                               robot_pose.position.x(), robot_pose.position.y(), home_distance);
@@ -451,6 +455,7 @@ void AutonomousCommandTask::loop() {
         if (this->home_return_state == HomeReturnState::ReverseFromDrop) {
             if (millis() - this->home_return_state_start_time >= HOME_DROP_REVERSE_TIME_MS) {
                 this->home_return_state = HomeReturnState::Searching;
+                match_end_returning_home.store(false);
             } else {
                 MotionControlOverride drop_override = MotionControlOverride::HomeDropReverse;
                 xQueueOverwrite(motion_control_override_queue, &drop_override);

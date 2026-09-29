@@ -42,11 +42,9 @@ void DriveTrainTask::update_drive_button() {
         return;
     }
     if (button_armed) {
-        const bool enabled = !drive_enabled.load() && !drive_start_pending.load();
-        // Start on a normal press; stopping (or cancelling startup) needs a hold.
-        // Consume the press only when it acts, and require release before another action.
-        if (!enabled && now - button_changed_at < BLUE_BUTTON_OFF_HOLD_MS) return;
+        // Start only. Consume presses during a run without changing drive state.
         button_armed = false;
+        if (drive_enabled.load() || drive_start_pending.load()) return;
         // Discard commands from before this transition.
         xQueueReset(motionControl_ChassisCommandsQueue);
         left_command = right_command = 0.0f;
@@ -55,27 +53,18 @@ void DriveTrainTask::update_drive_button() {
         left_motor.writeMicroseconds(1500);
         right_motor.writeMicroseconds(1500);
         drive_enabled.store(false);
-        if (enabled) {
-            m_opening_stopped.store(false);
-            m_opening_servo_raised.store(false);
-            m_opening_phase.store(menu_m_enabled.load() ? m_opening::Phase::Approaching : m_opening::Phase::Idle);
-            set_opening_path({});
-            match_end_rails_applied.store(match_end::Phase::Idle);
-            match_end_limit_seen.store(false);
-            match_controller.start(now);
-            match_end_phase.store(match_controller.phase);
-            // Home is already applied by the display. Wait for its pose/map update.
-            drive_start_pending.store(true);
-            Serial.println(active_home_blue.load() ? "HOME: blue selected" : "HOME: green selected");
-        } else {
-            m_opening_phase.store(m_opening::Phase::Idle);
-            match_controller.cancel();
-            match_end_phase.store(match_end::Phase::Idle);
-            const bool rails_up = true;
-            xQueueOverwrite(intake_position_queue, &rails_up);
-            drive_start_pending.store(false);
-            Serial.println("DRIVE: inhibited");
-        }
+        m_opening_stopped.store(false);
+        m_opening_servo_raised.store(false);
+        m_opening_phase.store(menu_m_enabled.load() ? m_opening::Phase::Approaching : m_opening::Phase::Idle);
+        set_opening_path({});
+        match_end_rails_applied.store(match_end::Phase::Idle);
+        match_end_limit_seen.store(false);
+        match_end_returning_home.store(false);
+        match_controller.start(now);
+        match_end_phase.store(match_controller.phase);
+        // Home is already applied by the display. Wait for its pose/map update.
+        drive_start_pending.store(true);
+        Serial.println(active_home_blue.load() ? "HOME: blue selected" : "HOME: green selected");
     }
 }
 
@@ -85,7 +74,7 @@ static const int REVERSE_MS = 1050;
 
 static const float RADIANS_PER_TICK = 2.0 * PI / (float)TICKS_PER_REVOLUTION;
 
-static const float LEFT_SCALE = 0.85;
+static const float LEFT_SCALE = 0.75;
 
 static const float KICKOFF_VALUE = 0.2;
 
@@ -106,8 +95,8 @@ void DriveTrainTask::loop() {
     xQueuePeek(match_end_sensors_queue, &end_sensors, 0);
     const auto old_phase = match_controller.phase;
     const auto end_phase = match_controller.update(millis(), end_sensors,
-        match_end_limit_seen.load() || end_sensors.entry_switch || end_sensors.upside_down_switch,
-        match_end_rails_applied.load());
+        match_end_limit_seen.load(),
+        match_end_rails_applied.load(), match_end_returning_home.load());
     match_end_phase.store(end_phase);
     if (end_phase != old_phase) {
         Serial.printf("MATCH: end phase=%u\n", static_cast<unsigned>(end_phase));
@@ -206,7 +195,8 @@ void DriveTrainTask::loop() {
     }
     // End-of-match motion overrides navigation and rejection; drive-disable is absolute.
     if (match_end::owns_intake(end_phase)) {
-        left_command = right_command = end_phase == match_end::Phase::Reversing
+        left_command = right_command = end_phase == match_end::Phase::Reversing &&
+            match_end::fresh(millis(), end_sensors)
             ? -match_end::REVERSE_SPEED : 0.0f;
         left_slew = SlewRate<float>(SLEW_RATE);
         right_slew = SlewRate<float>(SLEW_RATE);

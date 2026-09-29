@@ -290,9 +290,12 @@ void IntakeTask::loop() {
         !storage_voltage_probe_high, switch_state, upside_down_state, now};
     xQueueOverwrite(match_end_sensors_queue, &end_sensors);
     const auto end_phase = match_end_phase.load();
+    if (end_phase != match_end::Phase::DispenseLowering && end_phase != match_end::Phase::Reversing) {
+        match_end_limit_seen.store(false);
+    }
     if (match_end::owns_intake(end_phase)) {
         if (pins_valid && (switch_state || upside_down_state) &&
-            (end_phase == match_end::Phase::Lowering || end_phase == match_end::Phase::Reversing)) {
+            (end_phase == match_end::Phase::DispenseLowering || end_phase == match_end::Phase::Reversing)) {
             match_end_limit_seen.store(true);
         }
         // These switches now detect the stored weight; do not classify it as a new pickup/dummy.
