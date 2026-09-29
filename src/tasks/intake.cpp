@@ -5,6 +5,7 @@
 #include "tasks/display.hpp"
 #include "drive_enable.hpp"
 #include "match_end.hpp"
+#include "home_return_reverse.hpp"
 #include "dummy_rejection.hpp"
 #include "lib/dummy_release.hpp"
 
@@ -295,6 +296,26 @@ void IntakeTask::loop() {
         !storage_voltage_probe_high, switch_state, upside_down_state, now};
     xQueueOverwrite(match_end_sensors_queue, &end_sensors);
     const auto end_phase = match_end_phase.load();
+    static home_return::LimitReverse home_limit_reverse;
+    const bool travelling_home = home_return_travelling.load() && drive_enabled.load() &&
+        !match_end::owns_intake(end_phase) && !m_opening::active(opening_phase);
+    home_return_limit_reversing.store(home_limit_reverse.update(
+        travelling_home, pins_valid, switch_state || upside_down_state, now));
+    if (travelling_home) {
+        // Homeward collisions must not start pickup or dummy-rejection sequences.
+        dummy_rejection_priority.store(DummyRejectionPriority::Idle);
+        dummy_release_detector.reset();
+        dummy_release_confirmed.store(false);
+        const real_pickup::Command idle;
+        xQueueOverwrite(real_pickup_recovery_queue, &idle);
+        xQueueReset(intake_entry_queue);
+        weight_intake_state = WeightIntakeState::None;
+        real_entry_seen = false;
+        set_position(true);
+        monitor_servos();
+        xQueueOverwrite(carried_weight_count, &this->total_weights);
+        return;
+    }
     if (end_phase != match_end::Phase::DispenseLowering && end_phase != match_end::Phase::Reversing) {
         match_end_limit_seen.store(false);
     }

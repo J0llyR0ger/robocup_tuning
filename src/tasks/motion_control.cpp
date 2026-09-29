@@ -60,7 +60,7 @@ static MotionControlOverride motion_override = MotionControlOverride::None;
 MotionControlTask::MotionControlTask()
     : SchedulerTask("motion_control"), pure_pursuit(0.6),
       pid_drive(PIDController(DRIVE_KP, DRIVE_KI, 0, 10)
-                    .with_output_limits(-0.75, 0.75)
+                    .with_output_limits(-0.80, 0.80)
                     .with_integral_bounds(-100, 100)),
       pid_turn(PIDController(TURN_KP, TURN_KI, TURN_KD, 3 * DEG_TO_RAD)
                    .with_output_limits(-2.0, 2.0)
@@ -168,6 +168,7 @@ void MotionControlTask::loop() {
         motion_override == MotionControlOverride::DummyWeightClearanceReverse ||
         motion_override == MotionControlOverride::HomeDropHold ||
         motion_override == MotionControlOverride::HomeDropReverse ||
+        motion_override == MotionControlOverride::HomeLimitReverse ||
         motion_override == MotionControlOverride::PickupReverse ||
         motion_override == MotionControlOverride::PickupHold ||
         motion_override == MotionControlOverride::PickupForward) {
@@ -234,7 +235,8 @@ void MotionControlTask::loop() {
 
     // Autonomous dummy rejection takes precedence over path following (and the
     // normal stuck-recovery reverse) while the intake sequence is active.
-    if (motion_override == MotionControlOverride::PickupReverse) {
+    if (motion_override == MotionControlOverride::PickupReverse ||
+        motion_override == MotionControlOverride::HomeLimitReverse) {
         left_drive = right_drive = -PICKUP_REVERSE_SPEED;
     } else if (motion_override == MotionControlOverride::PickupForward) {
         left_drive = right_drive = PICKUP_FORWARD_SPEED;

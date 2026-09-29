@@ -8,6 +8,7 @@
 #include "m_opening.hpp"
 #include "drive_enable.hpp"
 #include "match_end.hpp"
+#include "home_return_reverse.hpp"
 #include "dummy_rejection.hpp"
 #include "tasks/display.hpp"
 #include <queues.hpp>
@@ -83,6 +84,7 @@ void AutonomousCommandTask::loop() {
         pickup_state = PickupState::Idle;
         dummy_weight_rejection_state = DummyWeightRejectionState::Idle;
         home_return_state = HomeReturnState::Searching;
+        home_return_travelling.store(false);
         match_end_returning_home.store(false);
         pickup_attempt_rails_down = false;
         weight_sensed_pose.reset();
@@ -104,6 +106,7 @@ void AutonomousCommandTask::loop() {
 
     const auto opening_phase = m_opening_phase.load();
     if (m_opening::active(opening_phase)) {
+        home_return_travelling.store(false);
         // Complete the opening trip before collecting weights.
         dummy_rejection_priority.store(DummyRejectionPriority::Idle);
         const real_pickup::Command idle;
@@ -175,6 +178,21 @@ void AutonomousCommandTask::loop() {
         bool pickup_active = true;
         xQueueOverwrite(intake_pickup_active_queue, &pickup_active);
         Serial.println("PICKUP: early probe, forward with rails down");
+    }
+
+    if (this->home_return_state == HomeReturnState::ReturningHome) {
+        // Clear stale classification events before processing the homeward switch response.
+        xQueueReset(intake_entry_queue);
+        dummy_rejection_priority.store(DummyRejectionPriority::Idle);
+        this->dummy_weight_rejection_state = DummyWeightRejectionState::Idle;
+        if (home_return_limit_reversing.load()) {
+            const auto reverse = MotionControlOverride::HomeLimitReverse;
+            const bool rails_up = true;
+            xQueueOverwrite(motion_control_override_queue, &reverse);
+            xQueueOverwrite(intake_position_queue, &rails_up);
+            this->home_best_distance.reset();
+            return;
+        }
     }
 
     bool is_real = false;
@@ -383,6 +401,7 @@ void AutonomousCommandTask::loop() {
         this->home_best_distance = std::nullopt;
         match_end_returning_home.store(true);
         this->home_return_state = HomeReturnState::ReturningHome;
+        home_return_travelling.store(true);
     }
 
     if (this->home_return_state != HomeReturnState::Searching) {
@@ -428,6 +447,7 @@ void AutonomousCommandTask::loop() {
                               active_home_blue.load() ? "blue" : "green", target.x(), target.y(),
                               robot_pose.position.x(), robot_pose.position.y(), home_distance);
                 this->home_return_state = HomeReturnState::ReleasingWeights;
+                home_return_travelling.store(false);
                 this->home_return_state_start_time = home_now;
                 this->home_best_distance = std::nullopt;
             } else {

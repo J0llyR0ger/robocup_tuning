@@ -41,6 +41,7 @@ enum class MotionControlOverride : uint8_t {
     DummyWeightHold,
     DummyWeightClearanceReverse,
     HomeDropReverse,
+    HomeLimitReverse,
     HomeDropHold,
     PickupReverse,
     PickupHold,
