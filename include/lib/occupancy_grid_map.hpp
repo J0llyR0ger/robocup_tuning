@@ -1,6 +1,7 @@
 #pragma once
 
 #include "config.hpp"
+#include "config/ramp.hpp"
 #include "lib/lidar.hpp"
 #include "lib/odometry.hpp"
 #include <array>
@@ -38,7 +39,7 @@ class OccupancyGridMap {
 
     using WeightCluster = FrontierCluster;
 
-    OccupancyGridMap();
+    explicit OccupancyGridMap(ramp::Region ramp_region = ramp_config::REGION);
 
     void clear(uint8_t score = UNKNOWN_SCORE);
 
@@ -63,6 +64,8 @@ class OccupancyGridMap {
     std::vector<WeightCluster> find_weight_clusters() const;
 
   private:
+    const ramp::Region ramp_region;
+    void apply_ramp_constraints();
     std::array<uint8_t, GRID_WIDTH * GRID_HEIGHT> scores;
     std::vector<FrontierCluster> frontier_clusters;
     std::vector<WeightCluster> weight_clusters;

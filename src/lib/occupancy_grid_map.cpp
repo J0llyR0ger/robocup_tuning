@@ -138,13 +138,32 @@ bool has_line_of_sight(
 
 } // namespace
 
-OccupancyGridMap::OccupancyGridMap() { this->clear(); }
+static_assert(OccupancyGridMap::TILE_SIZE_METERS == ramp::TILE_MM / 1000.0f);
+static_assert(!ramp_config::ENABLED ||
+    (ramp_config::REGION.x_begin() > 0 && ramp_config::REGION.y_begin() > 0 &&
+     ramp_config::REGION.x_end() < OccupancyGridMap::GRID_WIDTH &&
+     ramp_config::REGION.y_end() < OccupancyGridMap::GRID_HEIGHT),
+    "Ramp must fit inside the occupancy grid without overlapping the field boundary");
+
+OccupancyGridMap::OccupancyGridMap(ramp::Region region) : ramp_region(region) { this->clear(); }
+
+void OccupancyGridMap::apply_ramp_constraints() {
+    if (!ramp_region.enabled) return;
+    for (size_t y = 0; y < GRID_HEIGHT; ++y) {
+        for (size_t x = 0; x < GRID_WIDTH; ++x) {
+            auto &score = scores[to_index(x, y)];
+            score = ramp::constrain_score(ramp_region.cell(x, y), score, UNKNOWN_SCORE);
+        }
+    }
+}
 
 void OccupancyGridMap::clear(uint8_t score) {
     this->scores.fill(score);
     this->frontier_clusters.clear();
+    this->weight_clusters.clear();
 
     if (score != UNKNOWN_SCORE) {
+        apply_ramp_constraints();
         return;
     }
 
@@ -175,6 +194,7 @@ void OccupancyGridMap::clear(uint8_t score) {
         this->scores[to_index(0, y)] = 255;
         this->scores[to_index(GRID_WIDTH - 1, y)] = 255;
     }
+    apply_ramp_constraints();
 }
 
 const std::vector<OccupancyGridMap::WeightCluster> &OccupancyGridMap::get_weight_clusters() const {
@@ -512,11 +532,16 @@ void OccupancyGridMap::apply_beam(const Eigen::Vector2f &origin_world,
 void OccupancyGridMap::increase_cell(int grid_x, int grid_y) {
     size_t idx = to_index((size_t)grid_x, (size_t)grid_y);
     uint16_t increased = (uint16_t)this->scores[idx] + OCCUPIED_INCREMENT;
-    this->scores[idx] = (uint8_t)std::min<uint16_t>(255, increased);
+    this->scores[idx] = ramp::constrain_score(ramp_region.cell(grid_x, grid_y), increased, UNKNOWN_SCORE);
 }
 
 void OccupancyGridMap::decrease_cell(int grid_x, int grid_y) {
     size_t idx = to_index((size_t)grid_x, (size_t)grid_y);
+    const auto cell = ramp_region.cell(grid_x, grid_y);
+    if (cell == ramp::Cell::Edge) {
+        this->scores[idx] = 255;
+        return;
+    }
     uint8_t current = this->scores[idx];
 
     if (current <= FREE_DECREMENT) {
