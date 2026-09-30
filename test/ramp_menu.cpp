@@ -6,7 +6,7 @@ static_assert(mode(change_mode(change_mode(none, true), true)) == Mode::Y);
 static_assert(change_mode(change_mode(change_mode(none, true), true), true) == none);
 static_assert(mode(change_mode(none, false)) == Mode::Y);
 static_assert(change_y(none, false) == none);
-static_assert(region(change_y(none, true)).centre_y_mm == 300);
+static_assert(region(change_y(none, true)).centre_y_mm == 100);
 static_assert(!region(change_y(none, true)).enabled);
 constexpr auto top = encode(Mode::X, MAX_Y_STEP);
 static_assert(change_y(top, true) == top);

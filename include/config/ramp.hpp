@@ -3,7 +3,7 @@
 
 namespace ramp_config {
 // Boot defaults for the display menu. Centre X stays fixed; the joystick edits
-// mode and centre Y (300 mm steps). Coordinates are millimetres in the fixed
+// mode and centre Y (100 mm steps). Coordinates are millimetres in the fixed
 // field frame, independent of team colour. Selections are not saved over power-off.
 inline constexpr bool ENABLED = false;
 inline constexpr int CENTRE_X_MM = 1212;

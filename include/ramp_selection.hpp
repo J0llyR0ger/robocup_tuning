@@ -6,7 +6,7 @@
 
 namespace ramp_menu {
 enum class Mode : uint32_t { None, X, Y };
-constexpr int Y_STEP_MM = 300;
+constexpr int Y_STEP_MM = 100;
 constexpr unsigned MAX_Y_STEP = static_cast<int>(FIELD_HEIGHT_Y_METERS * 1000.0f) / Y_STEP_MM;
 constexpr uint32_t encode(Mode mode, unsigned y_step) {
     return y_step * 3 + static_cast<uint32_t>(mode);
