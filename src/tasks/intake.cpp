@@ -16,6 +16,8 @@ static bool real_entry_seen = false;
 IntakeTask::IntakeTask() : SchedulerTask("intake_task") {}
 
 static const int WEIGHT_DETECTION_DEBOUNCE_MS = 8;
+// Allow contact to settle after entry before classifying a non-conductive dummy.
+static constexpr uint32_t CONDUCTION_GRACE_MS = 100;
 static bool storage_voltage_probe_initialized = false;
 static bool storage_voltage_probe_last_high = false;
 static uint32_t storage_voltage_probe_last_print_time = 0;
@@ -297,12 +299,14 @@ void IntakeTask::loop() {
     xQueueOverwrite(match_end_sensors_queue, &end_sensors);
     const auto end_phase = match_end_phase.load();
     static home_return::LimitReverse home_limit_reverse;
-    const bool travelling_home = home_return_travelling.load() && drive_enabled.load() &&
+    const bool dropping_home = home_drop_active.load() && drive_enabled.load() &&
+        !match_end::owns_intake(end_phase) && !m_opening::active(opening_phase);
+    const bool travelling_home = !dropping_home && home_return_travelling.load() && drive_enabled.load() &&
         !match_end::owns_intake(end_phase) && !m_opening::active(opening_phase);
     home_return_limit_reversing.store(home_limit_reverse.update(
         travelling_home, pins_valid, switch_state || upside_down_state, now));
-    if (travelling_home) {
-        // Homeward collisions must not start pickup or dummy-rejection sequences.
+    if (travelling_home || dropping_home) {
+        // Neither homeward collisions nor departing weights may start pickup/rejection.
         dummy_rejection_priority.store(DummyRejectionPriority::Idle);
         dummy_release_detector.reset();
         dummy_release_confirmed.store(false);
@@ -311,7 +315,7 @@ void IntakeTask::loop() {
         xQueueReset(intake_entry_queue);
         weight_intake_state = WeightIntakeState::None;
         real_entry_seen = false;
-        set_position(true);
+        set_position(!dropping_home);
         monitor_servos();
         xQueueOverwrite(carried_weight_count, &this->total_weights);
         return;
@@ -405,6 +409,7 @@ void IntakeTask::loop() {
     case WeightIntakeState::None:
         if (switch_state) {
             weight_intake_state = WeightIntakeState::UnknownWeight;
+            conduction_grace_started = now;
         }
 
         break;
@@ -416,7 +421,7 @@ void IntakeTask::loop() {
             total_weights++;
             bool val = true;
             xQueueSend(intake_entry_queue, &val, 0);
-        } else if (!conduction_state) {
+        } else if (uint32_t(now - conduction_grace_started) >= CONDUCTION_GRACE_MS) {
             weight_intake_state = WeightIntakeState::DummyWeightDetected;
 
             // Do this in the sensor-owning task rather than waiting for the

@@ -85,6 +85,7 @@ void AutonomousCommandTask::loop() {
         dummy_weight_rejection_state = DummyWeightRejectionState::Idle;
         home_return_state = HomeReturnState::Searching;
         home_return_travelling.store(false);
+        home_drop_active.store(false);
         match_end_returning_home.store(false);
         pickup_attempt_rails_down = false;
         weight_sensed_pose.reset();
@@ -107,6 +108,7 @@ void AutonomousCommandTask::loop() {
     const auto opening_phase = m_opening_phase.load();
     if (m_opening::active(opening_phase)) {
         home_return_travelling.store(false);
+        home_drop_active.store(false);
         // Complete the opening trip before collecting weights.
         dummy_rejection_priority.store(DummyRejectionPriority::Idle);
         const real_pickup::Command idle;
@@ -125,10 +127,10 @@ void AutonomousCommandTask::loop() {
                 const Eigen::Vector2f forward(std::sin(robot_pose.heading), std::cos(robot_pose.heading));
                 const Eigen::Vector2f drop_position = robot_pose.position - forward * M_OPENING_DROP_BEHIND_M;
                 this->failed_weight_positions.push_back(drop_position);
-                Serial.printf("M OPENING: excluding dropped weight at (%.3f, %.3f)\n",
-                              drop_position.x(), drop_position.y());
+                // Serial.printf("M OPENING: excluding dropped weight at (%.3f, %.3f)\n",
+                //               drop_position.x(), drop_position.y());
             }
-            Serial.printf("M OPENING: phase=%u\n", static_cast<unsigned>(next));
+            // Serial.printf("M OPENING: phase=%u\n", static_cast<unsigned>(next));
             m_opening_phase.store(next);
         }
         auto path = get_opening_path();
@@ -177,15 +179,18 @@ void AutonomousCommandTask::loop() {
         this->pickup_attempt_rails_down = false;
         bool pickup_active = true;
         xQueueOverwrite(intake_pickup_active_queue, &pickup_active);
-        Serial.println("PICKUP: early probe, forward with rails down");
+        // Serial.println("PICKUP: early probe, forward with rails down");
     }
 
-    if (this->home_return_state == HomeReturnState::ReturningHome) {
-        // Clear stale classification events before processing the homeward switch response.
+    if (this->home_return_state == HomeReturnState::ReturningHome ||
+        this->home_return_state == HomeReturnState::ReleasingWeights ||
+        this->home_return_state == HomeReturnState::ReverseFromDrop) {
+        // Ignore departing weights during drop-off as well as stale homeward events.
         xQueueReset(intake_entry_queue);
         dummy_rejection_priority.store(DummyRejectionPriority::Idle);
         this->dummy_weight_rejection_state = DummyWeightRejectionState::Idle;
-        if (home_return_limit_reversing.load()) {
+        if (this->home_return_state == HomeReturnState::ReturningHome &&
+            home_return_limit_reversing.load()) {
             const auto reverse = MotionControlOverride::HomeLimitReverse;
             const bool rails_up = true;
             xQueueOverwrite(motion_control_override_queue, &reverse);
@@ -235,7 +240,7 @@ void AutonomousCommandTask::loop() {
             this->pickup_forward_duration_ms = PICKUP_REALIGN_FORWARD_MS;
             this->pickup_state = PickupState::Reversing;
             this->pickup_state_start_time = millis();
-            Serial.println("PICKUP: realigning with rails down");
+            // Serial.println("PICKUP: realigning with rails down");
             bool pickup_active = true;
             xQueueOverwrite(intake_pickup_active_queue, &pickup_active);
             this->weight_sensed_pose = robot_pose;
@@ -285,16 +290,16 @@ void AutonomousCommandTask::loop() {
         if (this->pickup_state == PickupState::Reversing && elapsed >= PICKUP_REVERSE_MS) {
             this->pickup_state = PickupState::Braking;
             this->pickup_state_start_time = now;
-            Serial.println("PICKUP: stopping with rails down");
+            // Serial.println("PICKUP: stopping with rails down");
         } else if (this->pickup_state == PickupState::Braking && elapsed >= PICKUP_BRAKE_MS) {
             this->pickup_state = PickupState::Forward;
             this->pickup_state_start_time = now;
-            Serial.println("PICKUP: forward with rails down");
+            // Serial.println("PICKUP: forward with rails down");
         } else if (this->pickup_state == PickupState::Forward &&
                    elapsed >= this->pickup_forward_duration_ms) {
             this->pickup_state = PickupState::Lifting;
             this->pickup_state_start_time = now;
-            Serial.println("PICKUP: lifting into storage");
+            // Serial.println("PICKUP: lifting into storage");
         } else if (this->pickup_state == PickupState::Lifting && elapsed >= PICKUP_LIFT_MS) {
             this->pickup_state = PickupState::Idle;
             this->weight_sensed_pose = std::nullopt;
@@ -338,15 +343,15 @@ void AutonomousCommandTask::loop() {
             dummy_rejection_priority.store(DummyRejectionPriority::Lift);
             this->dummy_weight_rejection_state = DummyWeightRejectionState::RaisingRails;
             this->dummy_weight_lift_start_time = now;
-            Serial.println(release_confirmed ? "DUMMY: reverse switch LOW, lifting rails"
-                                         : "DUMMY: release timeout, stopping and lifting");
+            // Serial.println(release_confirmed ? "DUMMY: reverse switch LOW, lifting rails"
+            //                              : "DUMMY: release timeout, stopping and lifting");
         }
         if (this->dummy_weight_rejection_state == DummyWeightRejectionState::RaisingRails &&
             now - this->dummy_weight_lift_start_time >= DUMMY_WEIGHT_LIFT_MS) {
             dummy_rejection_priority.store(DummyRejectionPriority::ReverseUp);
             this->dummy_weight_rejection_state = DummyWeightRejectionState::ReverseForClearance;
             this->dummy_weight_clearance_start_time = now;
-            Serial.println("DUMMY: reversing clear with rails up");
+            // Serial.println("DUMMY: reversing clear with rails up");
         }
         if (this->dummy_weight_rejection_state == DummyWeightRejectionState::ReverseForClearance &&
             now - this->dummy_weight_clearance_start_time >= DUMMY_WEIGHT_CLEARANCE_MS) {
@@ -391,9 +396,9 @@ void AutonomousCommandTask::loop() {
     if (this->home_return_state == HomeReturnState::Searching && return_requested) {
         // Either return mode runs the complete drop sequence.
         const auto target = active_home_position();
-        Serial.printf("HOME: returning to %s, target=(%.3f, %.3f), pose=(%.3f, %.3f)\n",
-                      active_home_blue.load() ? "blue" : "green",
-                      target.x(), target.y(), robot_pose.position.x(), robot_pose.position.y());
+        // Serial.printf("HOME: returning to %s, target=(%.3f, %.3f), pose=(%.3f, %.3f)\n",
+        //               active_home_blue.load() ? "blue" : "green",
+        //               target.x(), target.y(), robot_pose.position.x(), robot_pose.position.y());
         this->weight_sensed_pose = std::nullopt;
         this->locked_weight_position = std::nullopt;
         this->approached_weight_position = std::nullopt;
@@ -443,10 +448,11 @@ void AutonomousCommandTask::loop() {
 
             if (at_selected_base && current_colour() ==
                 (active_home_blue.load() ? colour::Value::Blue : colour::Value::Green)) {
-                Serial.printf("HOME: releasing at %s, target=(%.3f, %.3f), pose=(%.3f, %.3f), distance=%.2f m\n",
-                              active_home_blue.load() ? "blue" : "green", target.x(), target.y(),
-                              robot_pose.position.x(), robot_pose.position.y(), home_distance);
+                // Serial.printf("HOME: releasing at %s, target=(%.3f, %.3f), pose=(%.3f, %.3f), distance=%.2f m\n",
+                //               active_home_blue.load() ? "blue" : "green", target.x(), target.y(),
+                //               robot_pose.position.x(), robot_pose.position.y(), home_distance);
                 this->home_return_state = HomeReturnState::ReleasingWeights;
+                home_drop_active.store(true);
                 home_return_travelling.store(false);
                 this->home_return_state_start_time = home_now;
                 this->home_best_distance = std::nullopt;
@@ -480,6 +486,7 @@ void AutonomousCommandTask::loop() {
         if (this->home_return_state == HomeReturnState::ReverseFromDrop) {
             if (millis() - this->home_return_state_start_time >= HOME_DROP_REVERSE_TIME_MS) {
                 this->home_return_state = HomeReturnState::Searching;
+                home_drop_active.store(false);
                 match_end_returning_home.store(false);
             } else {
                 MotionControlOverride drop_override = MotionControlOverride::HomeDropReverse;

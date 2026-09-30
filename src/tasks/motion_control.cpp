@@ -16,8 +16,8 @@
 #define TURN_KD 45e-2 //alex - 30e-2
        
 //------- Joel edits -------
-static const uint32_t STUCK_TIME_MS = 195;
-static const uint32_t TURN_STUCK_TIME_MS = 370;
+static const uint32_t STUCK_TIME_MS =215;
+static const uint32_t TURN_STUCK_TIME_MS = 410;
 static const float TURN_STUCK_MIN_COMMAND = 0.15f;
 static const float TURN_STUCK_MIN_ERROR = 10.0f * DEG_TO_RAD;
 static const float TURN_STUCK_MIN_PROGRESS = 3.0f * DEG_TO_RAD;
@@ -33,7 +33,7 @@ static const float DUMMY_WEIGHT_REVERSE_SPEED = 0.15f;
 static const float HOME_DROP_REVERSE_SPEED = 0.60f;
 static const float PICKUP_REVERSE_SPEED = 0.20f;
 // Match the original maximum forward pickup command (0.5 * 1.5).
-static const float PICKUP_FORWARD_SPEED = 0.75f;
+static const float PICKUP_FORWARD_SPEED = 0.9f;
 // Extra inner-wheel reduction per unit of steering command during forward arcs.
 // Increase for tighter turns; zero leaves the standard drive/turn mix unchanged.
 static const float INNER_WHEEL_TURN_REDUCTION = 0.5f;

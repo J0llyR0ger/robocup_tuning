@@ -26,6 +26,7 @@ class IntakeTask : public SchedulerTask {
     SX1509 expander;
 
     WeightIntakeState weight_intake_state = WeightIntakeState::None;
+    uint32_t conduction_grace_started = 0;
 
     int last_conduction_time = 0;
 
