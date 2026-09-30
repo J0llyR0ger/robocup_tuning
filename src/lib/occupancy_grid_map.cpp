@@ -1,4 +1,5 @@
 #include "lib/occupancy_grid_map.hpp"
+#include "ramp_selection.hpp"
 #include <algorithm>
 #include <cmath>
 #include <queue>
@@ -139,20 +140,15 @@ bool has_line_of_sight(
 } // namespace
 
 static_assert(OccupancyGridMap::TILE_SIZE_METERS == ramp::TILE_MM / 1000.0f);
-static_assert(!ramp_config::ENABLED ||
-    (ramp_config::REGION.x_begin() > 0 && ramp_config::REGION.y_begin() > 0 &&
-     ramp_config::REGION.x_end() < OccupancyGridMap::GRID_WIDTH &&
-     ramp_config::REGION.y_end() < OccupancyGridMap::GRID_HEIGHT),
-    "Ramp must fit inside the occupancy grid without overlapping the field boundary");
-
-OccupancyGridMap::OccupancyGridMap(ramp::Region region) : ramp_region(region) { this->clear(); }
+OccupancyGridMap::OccupancyGridMap()
+    : ramp_region(ramp_menu::region(ramp_menu::selection.load())) { this->clear(); }
 
 void OccupancyGridMap::apply_ramp_constraints() {
     if (!ramp_region.enabled) return;
     for (size_t y = 0; y < GRID_HEIGHT; ++y) {
         for (size_t x = 0; x < GRID_WIDTH; ++x) {
             auto &score = scores[to_index(x, y)];
-            score = ramp::constrain_score(ramp_region.cell(x, y), score, UNKNOWN_SCORE);
+            score = ramp::constrain_score(ramp_region.grid_cell(x, y, GRID_WIDTH, GRID_HEIGHT), score, UNKNOWN_SCORE);
         }
     }
 }
@@ -292,6 +288,12 @@ void OccupancyGridMap::update_weight_clusters(const Pose &robot_pose) {
 
 void OccupancyGridMap::update_from_lidar(const Pose &robot_pose,
                                          std::span<const LidarResponsePoint> points) {
+    const auto selected_ramp = ramp_menu::region(ramp_menu::selection.load());
+    if (selected_ramp != ramp_region) {
+        ramp_region = selected_ramp;
+        // Discard old forced walls and rebuild with the new setup before pathfinding.
+        clear();
+    }
     float heading = robot_pose.heading;
     float heading_sin = sinf(heading);
     float heading_cos = cosf(heading);
@@ -532,12 +534,12 @@ void OccupancyGridMap::apply_beam(const Eigen::Vector2f &origin_world,
 void OccupancyGridMap::increase_cell(int grid_x, int grid_y) {
     size_t idx = to_index((size_t)grid_x, (size_t)grid_y);
     uint16_t increased = (uint16_t)this->scores[idx] + OCCUPIED_INCREMENT;
-    this->scores[idx] = ramp::constrain_score(ramp_region.cell(grid_x, grid_y), increased, UNKNOWN_SCORE);
+    this->scores[idx] = ramp::constrain_score(ramp_region.grid_cell(grid_x, grid_y, GRID_WIDTH, GRID_HEIGHT), increased, UNKNOWN_SCORE);
 }
 
 void OccupancyGridMap::decrease_cell(int grid_x, int grid_y) {
     size_t idx = to_index((size_t)grid_x, (size_t)grid_y);
-    const auto cell = ramp_region.cell(grid_x, grid_y);
+    const auto cell = ramp_region.grid_cell(grid_x, grid_y, GRID_WIDTH, GRID_HEIGHT);
     if (cell == ramp::Cell::Edge) {
         this->scores[idx] = 255;
         return;

@@ -1,0 +1,22 @@
+#include "ramp_selection.hpp"
+using namespace ramp_menu;
+constexpr auto none = encode(Mode::None, 0);
+static_assert(mode(change_mode(none, true)) == Mode::X);
+static_assert(mode(change_mode(change_mode(none, true), true)) == Mode::Y);
+static_assert(change_mode(change_mode(change_mode(none, true), true), true) == none);
+static_assert(mode(change_mode(none, false)) == Mode::Y);
+static_assert(change_y(none, false) == none);
+static_assert(region(change_y(none, true)).centre_y_mm == 300);
+static_assert(!region(change_y(none, true)).enabled);
+constexpr auto top = encode(Mode::X, MAX_Y_STEP);
+static_assert(change_y(top, true) == top);
+static_assert(region(top).centre_y_mm == 4800);
+static_assert(mode(change_y(top, false)) == Mode::X);
+static_assert(region(top).centre_x_mm == 1212);
+static_assert(region(encode(Mode::X, 3)).length_axis == ramp::Axis::X);
+static_assert(region(encode(Mode::Y, 3)).length_axis == ramp::Axis::Y);
+constexpr auto low = region(encode(Mode::Y, 0));
+static_assert(low.grid_cell(24, 0, 48, 97) == ramp::Cell::Edge);
+static_assert(low.grid_cell(24, 1, 48, 97) == ramp::Cell::Interior);
+static_assert(region(top).grid_cell(24, 96, 48, 97) == ramp::Cell::Edge);
+static_assert(region(none).grid_cell(24, 0, 48, 97) == ramp::Cell::Normal);

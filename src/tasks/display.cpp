@@ -4,6 +4,7 @@
 #include "colour_sensor.hpp"
 #include "drive_enable.hpp"
 #include "home_selection.hpp"
+#include "ramp_selection.hpp"
 #include "mutexes.hpp"
 #include <Arduino.h>
 #include <Wire.h>
@@ -25,19 +26,20 @@ constexpr int JOYSTICK_CENTRE = 512;
 constexpr int JOYSTICK_DEAD_ZONE = 100;
 // A smaller return zone prevents noise at the edge from counting as a new move.
 constexpr int JOYSTICK_RETURN_ZONE = 60;
-unsigned selected_item = 0; // 0 = Home, 1 = M, 2 = Return
+unsigned selected_item = 0; // Home, M, Return, Ramp mode, Ramp Y
+constexpr unsigned MENU_ITEMS = 5;
 bool menu_m = false;
 bool joystick_armed = false;
 unsigned centred_samples = 0;
-constexpr uint8_t DISPLAY_ROWS[] = {0, 2, 3, 4, 5, 7};
-char displayed_lines[6][17] = {};
+constexpr unsigned DISPLAY_ROW_COUNT = 8;
+char displayed_lines[DISPLAY_ROW_COUNT][17] = {};
 
 void display_loop(void *) {
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(100));
-        char lines[6][17] = {};
+        char lines[DISPLAY_ROW_COUNT][17] = {};
         const char *colour_label = poll_colour_sensor();
-        snprintf(lines[5], sizeof(lines[5]), "Colour:%s", colour_label);
+        snprintf(lines[7], sizeof(lines[7]), "Colour:%s", colour_label);
         bool inhibited = !drive_enabled.load() && !drive_start_pending.load();
         if (inhibited) {
             const int x = analogRead(JOYSTICK_X_PIN) - JOYSTICK_CENTRE;
@@ -64,7 +66,7 @@ void display_loop(void *) {
                     joystick_armed = false;
                     // A diagonal move acts on one axis only, whichever is stronger.
                     if (abs_y > abs_x) {
-                        selected_item = (selected_item + (y > 0 ? 1 : 2)) % 3;
+                        selected_item = (selected_item + (y > 0 ? 1 : MENU_ITEMS - 1)) % MENU_ITEMS;
                     } else if (selected_item == 0) {
                         const bool blue = !selected_home_blue.load();
                         selected_home_blue.store(blue);
@@ -74,8 +76,12 @@ void display_loop(void *) {
                     } else if (selected_item == 1) {
                         menu_m = !menu_m;
                         menu_m_enabled.store(menu_m);
-                    } else {
+                    } else if (selected_item == 2) {
                         menu_return_count.store(menu_return_count.load() == 4 ? 3 : 4);
+                    } else if (selected_item == 3) {
+                        ramp_menu::selection.store(ramp_menu::change_mode(ramp_menu::selection.load(), x > 0));
+                    } else {
+                        ramp_menu::selection.store(ramp_menu::change_y(ramp_menu::selection.load(), x > 0));
                     }
                 }
             }
@@ -87,14 +93,22 @@ void display_loop(void *) {
                      selected_item == 1 ? '>' : ' ', menu_m ? "Y" : "N");
             snprintf(lines[3], sizeof(lines[3]), "%c Return: %u",
                      selected_item == 2 ? '>' : ' ', menu_return_count.load());
-            snprintf(lines[4], sizeof(lines[4]), "MOTORS INHIBITED");
+            const auto ramp = ramp_menu::selection.load();
+            const auto ramp_mode = ramp_menu::mode(ramp);
+            snprintf(lines[4], sizeof(lines[4]), "%c Ramp: %s",
+                     selected_item == 3 ? '>' : ' ',
+                     ramp_mode == ramp_menu::Mode::None ? "None" :
+                     (ramp_mode == ramp_menu::Mode::X ? "X" : "Y"));
+            snprintf(lines[5], sizeof(lines[5]), "%c Ramp Y:%4umm",
+                     selected_item == 4 ? '>' : ' ', ramp_menu::y_step(ramp) * ramp_menu::Y_STEP_MM);
+            snprintf(lines[6], sizeof(lines[6]), "MOTORS INHIBITED");
         } else {
             // Re-entering setup requires centring, so a held stick cannot change it.
             joystick_armed = false;
             centred_samples = 0;
         }
 
-        for (unsigned row = 0; row < 6; ++row) {
+        for (unsigned row = 0; row < DISPLAY_ROW_COUNT; ++row) {
             if (drive_enabled.load() || drive_start_pending.load()) {
                 // Blank all rows, including any drawn before the state changed.
                 if (inhibited) {
@@ -102,7 +116,7 @@ void display_loop(void *) {
                     joystick_armed = false;
                     centred_samples = 0;
                     memset(lines, 0, sizeof(lines));
-                    snprintf(lines[5], sizeof(lines[5]), "Colour:%s", colour_label);
+                    snprintf(lines[7], sizeof(lines[7]), "Colour:%s", colour_label);
                     row = 0;
                 }
             }
@@ -111,7 +125,7 @@ void display_loop(void *) {
             if (strcmp(padded, displayed_lines[row]) == 0) continue;
             // Release the shared bus between rows so sensors can run.
             if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(5)) != pdTRUE) continue;
-            display.drawString(0, DISPLAY_ROWS[row], padded);
+            display.drawString(0, row, padded);
             xSemaphoreGive(i2cMutex);
             memcpy(displayed_lines[row], padded, sizeof(padded));
         }

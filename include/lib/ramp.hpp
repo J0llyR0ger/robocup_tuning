@@ -25,6 +25,8 @@ struct Region {
     constexpr int y_begin() const { return floor_cell(min_y_mm()); }
     constexpr int y_end() const { return ceil_cell(max_y_mm()); }
 
+    constexpr bool operator==(const Region &) const = default;
+
     constexpr Cell cell(int x, int y) const {
         if (!enabled || x < x_begin() || x >= x_end() || y < y_begin() || y >= y_end())
             return Cell::Normal;
@@ -33,8 +35,13 @@ struct Region {
             : x == x_begin() || x == x_end() - 1;
         return edge ? Cell::Edge : Cell::Interior;
     }
-
-
+    // A ramp clipped by the arena must never clear the arena boundary.
+    constexpr Cell grid_cell(int x, int y, int width, int height) const {
+        const auto result = cell(x, y);
+        if (result != Cell::Normal &&
+            (x == 0 || y == 0 || x == width - 1 || y == height - 1)) return Cell::Edge;
+        return result;
+    }
 };
 
 constexpr uint8_t constrain_score(Cell cell, uint16_t score, uint8_t unknown) {
