@@ -13,7 +13,7 @@ constexpr bool should_start(bool entry_low, bool conduction_low, bool upside_dow
 constexpr State advance(State state, uint32_t elapsed, bool storage_detected) {
     switch (state) {
     case State::Stopping: return elapsed >= 400 ? State::Reversing : state;
-    case State::Reversing: return elapsed >= 500 ? State::Lowering : state;
+    case State::Reversing: return elapsed >= 800 ? State::Lowering : state;
     case State::Lowering: return elapsed >= 400 ? State::Forward : state;
     case State::Forward:
         return storage_detected || elapsed >= FORWARD_TIMEOUT_MS ? State::Lifting : state;

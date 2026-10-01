@@ -11,9 +11,9 @@
 #define DRIVE_KP 25e-1 //alex 40e-1
 #define DRIVE_KI 0 // 20e-4
 
-#define TURN_KP 1.0 // Stronger heading correction when approaching targets.
+#define TURN_KP 1.4 // Stronger heading correction when approaching targets.
 #define TURN_KI 0
-#define TURN_KD 45e-2 //alex - 30e-2
+#define TURN_KD 60e-2 //alex - 30e-2
        
 //------- Joel edits -------
 static const uint32_t STUCK_TIME_MS = 195;
@@ -60,7 +60,7 @@ static MotionControlOverride motion_override = MotionControlOverride::None;
 MotionControlTask::MotionControlTask()
     : SchedulerTask("motion_control"), pure_pursuit(0.6),
       pid_drive(PIDController(DRIVE_KP, DRIVE_KI, 0, 10)
-                    .with_output_limits(-0.80, 0.80)
+                    .with_output_limits(-0.90, 0.90)
                     .with_integral_bounds(-100, 100)),
       pid_turn(PIDController(TURN_KP, TURN_KI, TURN_KD, 3 * DEG_TO_RAD)
                    .with_output_limits(-2.0, 2.0)

@@ -22,7 +22,7 @@ class OccupancyGridMap {
 
     static constexpr size_t MIN_FRONTIER_CLUSTER_SIZE = 4;
     static constexpr uint8_t WEIGHT_CLUSTER_OCCUPIED_THRESHOLD = 135; // alex 200
-    static constexpr size_t MAX_WEIGHT_CLUSTER_SIZE = 2;              // alex - 4
+    static constexpr size_t MAX_WEIGHT_CLUSTER_SIZE = 4;              // alex - 4
     static constexpr int WEIGHT_CLUSTER_CLEAR_RADIUS = 3;             // alex - 2
 
     struct FrontierCell {

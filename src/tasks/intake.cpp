@@ -16,6 +16,8 @@ static bool real_entry_seen = false;
 IntakeTask::IntakeTask() : SchedulerTask("intake_task") {}
 
 static const int WEIGHT_DETECTION_DEBOUNCE_MS = 8;
+// Allow the entry switch to arrive before the metal probe.
+static constexpr uint32_t ENTRY_CONDUCTION_GRACE_MS = 150;
 static bool storage_voltage_probe_initialized = false;
 static bool storage_voltage_probe_last_high = false;
 static uint32_t storage_voltage_probe_last_print_time = 0;
@@ -404,6 +406,7 @@ void IntakeTask::loop() {
     switch (weight_intake_state) {
     case WeightIntakeState::None:
         if (switch_state) {
+            entry_switch_start_time = now;
             weight_intake_state = WeightIntakeState::UnknownWeight;
         }
 
@@ -416,7 +419,9 @@ void IntakeTask::loop() {
             total_weights++;
             bool val = true;
             xQueueSend(intake_entry_queue, &val, 0);
-        } else if (!conduction_state) {
+        } else if (now - entry_switch_start_time >= ENTRY_CONDUCTION_GRACE_MS) {
+            // Conduction above wins even on the deadline; only reject after
+            // a continuous switch press without metal throughout the grace period.
             weight_intake_state = WeightIntakeState::DummyWeightDetected;
 
             // Do this in the sensor-owning task rather than waiting for the

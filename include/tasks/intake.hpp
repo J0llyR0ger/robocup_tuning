@@ -28,6 +28,7 @@ class IntakeTask : public SchedulerTask {
     WeightIntakeState weight_intake_state = WeightIntakeState::None;
 
     int last_conduction_time = 0;
+    uint32_t entry_switch_start_time = 0;
 
     bool rail_position_commanded = false;
     bool commanded_rails_up = true;
