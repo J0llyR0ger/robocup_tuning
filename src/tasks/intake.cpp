@@ -305,6 +305,7 @@ void IntakeTask::loop() {
         travelling_home, pins_valid, switch_state || upside_down_state, now));
     if (travelling_home) {
         // Homeward collisions must not start pickup or dummy-rejection sequences.
+        intake_classification_pending.store(false);
         dummy_rejection_priority.store(DummyRejectionPriority::Idle);
         dummy_release_detector.reset();
         dummy_release_confirmed.store(false);
@@ -327,6 +328,7 @@ void IntakeTask::loop() {
             match_end_limit_seen.store(true);
         }
         // These switches now detect the stored weight; do not classify it as a new pickup/dummy.
+        intake_classification_pending.store(false);
         dummy_rejection_priority.store(DummyRejectionPriority::Idle);
         dummy_release_detector.reset();
         dummy_release_confirmed.store(false);
@@ -341,6 +343,7 @@ void IntakeTask::loop() {
     }
 
     if (m_opening::active(m_opening_phase.load())) {
+        intake_classification_pending.store(false);
         dummy_rejection_priority.store(DummyRejectionPriority::Idle);
         dummy_release_detector.reset();
         dummy_release_confirmed.store(false);
@@ -412,16 +415,15 @@ void IntakeTask::loop() {
 
         break;
     case WeightIntakeState::UnknownWeight: {
-        if (!switch_state) {
-            weight_intake_state = WeightIntakeState::None;
-        } else if (conduction_state) {
+        // Keep the contact latched even if the object passes or bounces off the switch.
+        if (conduction_state) {
             weight_intake_state = WeightIntakeState::RealWeightDetected;
             total_weights++;
             bool val = true;
             xQueueSend(intake_entry_queue, &val, 0);
         } else if (now - entry_switch_start_time >= ENTRY_CONDUCTION_GRACE_MS) {
             // Conduction above wins even on the deadline; only reject after
-            // a continuous switch press without metal throughout the grace period.
+            // the grace period without metal, even if the entry switch has released.
             weight_intake_state = WeightIntakeState::DummyWeightDetected;
 
             // Do this in the sensor-owning task rather than waiting for the
@@ -457,6 +459,8 @@ void IntakeTask::loop() {
         break;
     }
 
+    intake_classification_pending.store(weight_intake_state == WeightIntakeState::UnknownWeight);
+
     // Sample switch edges at intake frequency so autonomous cannot miss them.
     if (drive_enabled.load() &&
         dummy_rejection_priority.load() == DummyRejectionPriority::ReverseDown) {
@@ -485,7 +489,7 @@ void IntakeTask::loop() {
     }
 
     // Resolve all rail commands after sensor classification, including recovery.
-    if (has_intake_command || force_rails_up || recovery.state != real_pickup::State::Idle ||
+    if (intake_classification_pending.load() || has_intake_command || force_rails_up || recovery.state != real_pickup::State::Idle ||
         dummy_rejection_priority.load() != DummyRejectionPriority::Idle) {
         set_position(intake_command);
     }

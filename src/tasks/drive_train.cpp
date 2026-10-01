@@ -155,7 +155,12 @@ void DriveTrainTask::loop() {
     if (drive_enabled.load()) {
         const auto pose = get_global_pose();
         const float translation = (left_rate + right_rate) * 0.5f;
-        const float preview = translation > 0.0f ? 0.35f : translation < 0.0f ? -0.35f : 0.0f;
+        float preview_distance = 0.35f;
+        // Do not project beyond the opening destination when approaching it.
+        if (m_opening_phase.load() == m_opening::Phase::Approaching && translation > 0.0f) {
+            preview_distance = std::min(preview_distance, (m_opening_target() - pose.position).norm());
+        }
+        const float preview = translation > 0.0f ? preview_distance : translation < 0.0f ? -0.35f : 0.0f;
         // Heading is clockwise from +Y, in radians (same convention as steering).
         const Eigen::Vector2f direction(std::sin(pose.heading), std::cos(pose.heading));
         bool blocked = crosses_enemy_base(pose.position,
@@ -174,7 +179,10 @@ void DriveTrainTask::loop() {
             }
         }
         if (blocked) {
-            left_rate = right_rate = 0.0f;
+            // Remove translation but preserve steering so the robot can turn away.
+            const float turn = (left_rate - right_rate) * 0.5f;
+            left_rate = turn;
+            right_rate = -turn;
             left_command = right_command = 0.0f;
             left_slew = SlewRate<float>(SLEW_RATE);
             right_slew = SlewRate<float>(SLEW_RATE);
@@ -189,6 +197,12 @@ void DriveTrainTask::loop() {
         left_slew = SlewRate<float>(SLEW_RATE);
         right_slew = SlewRate<float>(SLEW_RATE);
         left_rate = right_rate = apply_kickoff(left_command);
+    }
+    // Bypass slew immediately while the entry contact is awaiting classification.
+    if (intake_classification_pending.load() && rejection == DummyRejectionPriority::Idle) {
+        left_command = right_command = left_rate = right_rate = 0.0f;
+        left_slew = SlewRate<float>(SLEW_RATE);
+        right_slew = SlewRate<float>(SLEW_RATE);
     }
     const bool opening_hold = m_opening::hold(m_opening_phase.load());
     if (opening_hold) {

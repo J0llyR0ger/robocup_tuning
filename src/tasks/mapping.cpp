@@ -152,7 +152,20 @@ std::vector<Eigen::Vector2f> MappingTask::get_path_between_world_points(Eigen::V
     // Reject any spline overshoot into the forbidden area.
     Eigen::Vector2f previous = start;
     for (const auto &point : smoothed_path) {
-        if (crosses_enemy_base(previous, point)) return {};
+        if (crosses_enemy_base(previous, point)) {
+            // Spline overshoot must not discard an otherwise valid A* route.
+            std::vector<Eigen::Vector2f> grid_path;
+            Eigen::Vector2f last = start;
+            for (const auto node : path) {
+                const Eigen::Vector2f cell(
+                    (OccupancyGridGraph::xOf(node) + 0.5f) * OccupancyGridMap::TILE_SIZE_METERS,
+                    (OccupancyGridGraph::yOf(node) + 0.5f) * OccupancyGridMap::TILE_SIZE_METERS);
+                if (crosses_enemy_base(last, cell)) return {};
+                grid_path.push_back(cell);
+                last = cell;
+            }
+            return grid_path;
+        }
         previous = point;
     }
     return smoothed_path;

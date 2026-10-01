@@ -6,18 +6,19 @@
 #include "match_end.hpp"
 #include "dummy_rejection.hpp"
 #include "enemy_base.hpp"
+#include "m_opening.hpp"
 #include "utils.hpp"
 
 #define DRIVE_KP 25e-1 //alex 40e-1
 #define DRIVE_KI 0 // 20e-4
 
-#define TURN_KP 1.4 // Stronger heading correction when approaching targets.
+#define TURN_KP 1.6 // Stronger heading correction when approaching targets.
 #define TURN_KI 0
 #define TURN_KD 60e-2 //alex - 30e-2
        
 //------- Joel edits -------
-static const uint32_t STUCK_TIME_MS = 195;
-static const uint32_t TURN_STUCK_TIME_MS = 370;
+static const uint32_t STUCK_TIME_MS = 215;
+static const uint32_t TURN_STUCK_TIME_MS = 350;
 static const float TURN_STUCK_MIN_COMMAND = 0.15f;
 static const float TURN_STUCK_MIN_ERROR = 10.0f * DEG_TO_RAD;
 static const float TURN_STUCK_MIN_PROGRESS = 3.0f * DEG_TO_RAD;
@@ -121,7 +122,9 @@ void MotionControlTask::loop() {
         enemy_escape_active = false;
     }
     // Finish deliberate intake/drop sequences before taking control of motion.
-    if (enemy_escape_active && motion_override == MotionControlOverride::None) {
+    const bool opening_approach_hold = m_opening_phase.load() == m_opening::Phase::Approaching &&
+        motion_override == MotionControlOverride::HomeDropHold;
+    if (enemy_escape_active && (motion_override == MotionControlOverride::None || opening_approach_hold)) {
         turn_stuck_timer_running = false;
         reversing = false;
         stuck_timer_running = false;

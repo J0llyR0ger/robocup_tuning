@@ -5,7 +5,7 @@
 
 // Match the corner base area already reserved by OccupancyGridMap::clear().
 constexpr float ENEMY_BASE_SIZE_M = 0.65f;
-constexpr float ENEMY_BASE_CLEARANCE_M = 0.20f;
+constexpr float ENEMY_BASE_CLEARANCE_M = 0.00f;
 
 // Segment/rectangle intersection, including the clearance around the base.
 // Own blue => enemy green at low X; own green => enemy blue at high X.
